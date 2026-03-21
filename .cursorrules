@@ -1,0 +1,49 @@
+# Diving Master - Game Development Rules
+
+## Project Context
+
+- React Native game using Skia + Reanimated
+- 2D underwater endless runner, 60fps target
+- TypeScript strict mode enabled
+
+## Architecture Patterns
+
+### File Organization
+
+src
+/components # Skia visual components (Swimmer, Obstacles, etc.)
+/hooks # Game logic hooks (useGameLoop, useCollision, etc.)
+/types # TypeScript interfaces
+/constants # Game balance values
+/utils # Math helpers, collision detection
+
+### Naming Conventions
+
+- Components: PascalCase (e.g., `SeaTurtle.tsx`)
+- Hooks: camelCase with `use` prefix (e.g., `useObstacles.ts`)
+- Types: PascalCase with descriptive names (e.g., `ObstacleType`, `GameState`)
+- Constants: UPPER_SNAKE_CASE in dedicated files
+
+### Code Standards
+
+- Use Skia primitives (Rect, Circle, Path, Image) for all rendering
+- Reanimated shared values for animation state, React state for UI
+- Always define TypeScript interfaces before implementation
+- Prefer composition over inheritance for game entities
+
+### Performance Rules
+
+- NO setState in animation loops (use shared values)
+- Object pooling for obstacles/collectibles
+- Collision detection only for nearby entities
+- Use useFrameCallback for game loop, never setInterval
+
+### Import Order
+
+1. React / React Native
+2. Third-party (Skia, Reanimated)
+3. Types
+4. Constants
+5. Hooks
+6. Components
+7. Utils

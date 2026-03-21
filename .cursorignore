@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+ios/Pods/
+android/.gradle/
+
+# Build outputs
+ios/build/
+android/app/build/
+*.ipa
+*.apk
+
+# Cache
+.expo/
+.cache/
+metro-cache/
+
+# Generated files
+ios/Podfile.lock
+yarn.lock
+package-lock.json
+
+# Large assets (if you add them later)
+assets/sounds/
+assets/fonts/
