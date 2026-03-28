@@ -1,13 +1,33 @@
-import { createContext, useContext } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { StyleSheet, View, useWindowDimensions } from "react-native";
 import { GestureDetector } from "react-native-gesture-handler";
-import { Canvas, Fill, FitBox, rect } from "@shopify/react-native-skia";
+import { Canvas, Fill, FitBox, Group, rect } from "@shopify/react-native-skia";
 
 import type { FrameClock, GameCanvasProps } from "@/src/types/game-canvas";
 import { GAME_HEIGHT, GAME_WIDTH } from "@/src/constants/game-viewport";
-import { useFishSchool } from "@/src/hooks/useFishSchool";
+import { Coin } from "@/src/components/Coin";
+import { Diamond } from "@/src/components/Diamond";
+import { Coral } from "@/src/components/Coral";
+import { LevelHud } from "@/src/components/LevelHud";
+import { LivesHud } from "@/src/components/LivesHud";
+import { ScoreHud } from "@/src/components/ScoreHud";
+import {
+  getCollectibleRotation,
+  getCollectibleSparkles,
+  getDiamondScale,
+  useCollectibleSpawner,
+} from "@/src/hooks/useCollectibleSpawner";
+import { useCollisionHandler } from "@/src/hooks/useCollisionHandler";
 import { useGameFrame } from "@/src/hooks/useGameFrame";
-import { useSeaTurtle } from "@/src/hooks/useSeaTurtle";
+import { useLevelManager } from "@/src/hooks/useLevelManager";
+import { useLivesManager } from "@/src/hooks/useLivesManager";
+import { useScoreManager } from "@/src/hooks/useScoreManager";
+import {
+  getFishBodyWobbleTransforms,
+  getTurtleFlipperTransforms,
+  getTurtleOffsetY,
+  useObstacleSpawner,
+} from "@/src/hooks/useObstacleSpawner";
 import { useSwimmer } from "@/src/hooks/useSwimmer";
 import { FishSchool } from "@/src/components/FishSchool";
 import { SeaTurtle } from "@/src/components/SeaTurtle";
@@ -31,14 +51,43 @@ export function GameCanvas({
   touchControlMode = "drag",
 }: GameCanvasProps) {
   const { width, height } = useWindowDimensions();
-  const clock = useGameFrame({ autostart: true, paused });
+  const [isGameOver, setIsGameOver] = useState(false);
+  const [scoreForDifficulty, setScoreForDifficulty] = useState(0);
+  const gamePaused = paused || isGameOver;
+  const clock = useGameFrame({ autostart: true, paused: gamePaused });
 
   const src = rect(0, 0, GAME_WIDTH, GAME_HEIGHT);
   const dst = rect(0, 0, width, height);
 
   const swimmer = useSwimmer(clock.timeMs, width, height, touchControlMode);
-  const fishSchool = useFishSchool(clock.timeMs, paused);
-  const seaTurtle = useSeaTurtle(clock.timeMs, paused);
+  const levelState = useLevelManager(scoreForDifficulty);
+  const obstacleState = useObstacleSpawner(gamePaused, levelState.level);
+  const collectibleState = useCollectibleSpawner(
+    gamePaused,
+    obstacleState.scrollX,
+    swimmer.swimmerY,
+    obstacleState.obstacles,
+  );
+  const collisionState = useCollisionHandler(
+    gamePaused,
+    obstacleState.elapsedMs,
+    obstacleState.scrollX,
+    swimmer.swimmerY,
+    obstacleState.obstacles,
+    collectibleState.collectibles,
+    obstacleState.removeObstacle,
+    collectibleState.collectCollectible,
+  );
+  const livesState = useLivesManager(collisionState.lives);
+  const scoreState = useScoreManager(collisionState.score);
+
+  useEffect(() => {
+    setIsGameOver(collisionState.lives <= 0);
+  }, [collisionState.lives]);
+
+  useEffect(() => {
+    setScoreForDifficulty(collisionState.score);
+  }, [collisionState.score]);
 
   const skiaChildren =
     typeof children === "function"
@@ -47,22 +96,85 @@ export function GameCanvas({
         ? children
         : (
             <>
-              {fishSchool.isAlive ? (
-                <FishSchool
-                  fishCount={fishSchool.fishCount}
-                  schoolTransform={fishSchool.schoolTransform}
-                  bodyWobble={fishSchool.bodyWobble}
-                />
-              ) : null}
-              {seaTurtle.isAlive ? (
-                <SeaTurtle
-                  rootTransform={seaTurtle.rootTransform}
-                  flipperFrontUpper={seaTurtle.flipperFrontUpper}
-                  flipperFrontLower={seaTurtle.flipperFrontLower}
-                  flipperRearUpper={seaTurtle.flipperRearUpper}
-                  flipperRearLower={seaTurtle.flipperRearLower}
-                />
-              ) : null}
+              {collectibleState.collectibles.map((collectible) => {
+                const rootTransform = [
+                  { translateX: collectible.worldX - obstacleState.scrollX },
+                  { translateY: collectible.y },
+                ];
+
+                if (collectible.kind === "diamond") {
+                  return (
+                    <Diamond
+                      key={collectible.id}
+                      rootTransform={rootTransform}
+                      scale={getDiamondScale(collectibleState.elapsedMs)}
+                      sparkleBursts={getCollectibleSparkles(collectible, collectibleState.elapsedMs)}
+                    />
+                  );
+                }
+
+                return (
+                  <Coin
+                    key={collectible.id}
+                    rootTransform={rootTransform}
+                    rotation={getCollectibleRotation(collectibleState.elapsedMs)}
+                    sparkleBursts={getCollectibleSparkles(collectible, collectibleState.elapsedMs)}
+                  />
+                );
+              })}
+              {obstacleState.obstacles.map((obstacle) => {
+                const screenX = obstacle.worldX - obstacleState.scrollX;
+
+                if (obstacle.kind === "fish") {
+                  return (
+                    <FishSchool
+                      key={obstacle.id}
+                      fishCount={obstacle.fishCount}
+                      schoolTransform={[
+                        { translateX: screenX },
+                        { translateY: obstacle.y },
+                      ]}
+                      bodyWobble={getFishBodyWobbleTransforms(obstacleState.elapsedMs)}
+                    />
+                  );
+                }
+
+                if (obstacle.kind === "turtle") {
+                  const flippers = getTurtleFlipperTransforms(obstacleState.elapsedMs);
+                  return (
+                    <SeaTurtle
+                      key={obstacle.id}
+                      rootTransform={[
+                        { translateX: screenX },
+                        {
+                          translateY: getTurtleOffsetY(
+                            obstacle,
+                            obstacleState.elapsedMs,
+                          ),
+                        },
+                      ]}
+                      flipperFrontUpper={flippers.flipperFrontUpper}
+                      flipperFrontLower={flippers.flipperFrontLower}
+                      flipperRearUpper={flippers.flipperRearUpper}
+                      flipperRearLower={flippers.flipperRearLower}
+                    />
+                  );
+                }
+
+                return (
+                  <Coral
+                    key={obstacle.id}
+                    rootTransform={[
+                      { translateX: screenX },
+                      { translateY: obstacle.baseY },
+                      { scale: obstacle.scale },
+                    ]}
+                    branchPath={obstacle.branchPath}
+                    innerBranchPath={obstacle.innerBranchPath}
+                    palette={obstacle.palette}
+                  />
+                );
+              })}
               <Swimmer
                 rootTransform={swimmer.rootTransform}
                 armTransformLeft={swimmer.armTransformLeft}
@@ -70,6 +182,11 @@ export function GameCanvas({
                 legTransformLeft={swimmer.legTransformLeft}
                 legTransformRight={swimmer.legTransformRight}
               />
+              {collisionState.hitFlashOpacity > 0 ? (
+                <Group opacity={collisionState.hitFlashOpacity}>
+                  <Fill color="#ef444433" />
+                </Group>
+              ) : null}
             </>
           );
 
@@ -83,6 +200,9 @@ export function GameCanvas({
               {skiaChildren}
             </FitBox>
           </Canvas>
+          <LivesHud livesState={livesState} />
+          <ScoreHud scoreState={scoreState} />
+          <LevelHud levelState={levelState} />
         </View>
       </GestureDetector>
     </GameFrameContext.Provider>

@@ -1,0 +1,12 @@
+export const DIAMOND_SIZE = 34;
+export const DIAMOND_HALF_WIDTH = DIAMOND_SIZE * 0.45;
+export const DIAMOND_HALF_HEIGHT = DIAMOND_SIZE * 0.58;
+export const DIAMOND_COLLISION_RADIUS = 28;
+export const DIAMOND_PULSE_PERIOD_MS = 500;
+export const DIAMOND_SPARKLE_DURATION_MS = 520;
+export const DIAMOND_DESPAWN_PAST_LEFT = 36;
+
+export const DIAMOND_OUTER_PATH =
+  "M 0 -20 L 15 -2 L 0 20 L -15 -2 Z";
+export const DIAMOND_INNER_PATH =
+  "M 0 -12 L 9 -1 L 0 12 L -9 -1 Z";

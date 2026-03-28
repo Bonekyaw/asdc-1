@@ -1,8 +1,8 @@
+import "react-native-reanimated";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { StyleSheet } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import "react-native-reanimated";
 
 export default function RootLayout() {
   return (
