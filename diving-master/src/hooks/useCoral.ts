@@ -89,6 +89,7 @@ export function useCoral(
   const isAliveSV = useSharedValue(1);
 
   const rootTransform = useDerivedValue(() => {
+    "worklet";
     const screenX = worldX.value - scrollX.value;
     return [
       { translateX: screenX },

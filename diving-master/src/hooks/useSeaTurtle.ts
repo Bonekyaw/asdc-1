@@ -57,6 +57,7 @@ export function useSeaTurtle(
    * fBob = frequency * SEA_TURTLE_FREQ_TO_BOB_HZ (frequency in 0.02–0.05 from spec).
    */
   const rootTransform = useDerivedValue(() => {
+    "worklet";
     const tSec = timeMs.value * 0.001;
     const fBob = frequencySV.value * SEA_TURTLE_FREQ_TO_BOB_HZ;
     const phase = 2 * Math.PI * fBob * tSec;
@@ -68,26 +69,22 @@ export function useSeaTurtle(
     ];
   });
 
-  const flipperFrontUpper = useDerivedValue(() => [
-    {
-      rotate: Math.sin(timeMs.value * 0.011 + 0.4) * 0.52,
-    },
-  ]);
-  const flipperFrontLower = useDerivedValue(() => [
-    {
-      rotate: Math.sin(timeMs.value * 0.011 + 2.1) * -0.48,
-    },
-  ]);
-  const flipperRearUpper = useDerivedValue(() => [
-    {
-      rotate: Math.sin(timeMs.value * 0.009 + 1.2) * 0.42,
-    },
-  ]);
-  const flipperRearLower = useDerivedValue(() => [
-    {
-      rotate: Math.sin(timeMs.value * 0.009 + 2.9) * -0.4,
-    },
-  ]);
+  const flipperFrontUpper = useDerivedValue(() => {
+    "worklet";
+    return [{ rotate: Math.sin(timeMs.value * 0.011 + 0.4) * 0.52 }];
+  });
+  const flipperFrontLower = useDerivedValue(() => {
+    "worklet";
+    return [{ rotate: Math.sin(timeMs.value * 0.011 + 2.1) * -0.48 }];
+  });
+  const flipperRearUpper = useDerivedValue(() => {
+    "worklet";
+    return [{ rotate: Math.sin(timeMs.value * 0.009 + 1.2) * 0.42 }];
+  });
+  const flipperRearLower = useDerivedValue(() => {
+    "worklet";
+    return [{ rotate: Math.sin(timeMs.value * 0.009 + 2.9) * -0.4 }];
+  });
 
   const markDespawned = useCallback(() => {
     setIsAlive(false);

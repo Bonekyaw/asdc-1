@@ -1,4 +1,5 @@
 import type { FishSchoolGroupTransform } from "@/src/types/fish-school";
+import type { SharedValue } from "react-native-reanimated";
 
 export interface CoinSparkle {
   x: number;
@@ -9,6 +10,6 @@ export interface CoinSparkle {
 
 export interface CoinProps {
   rootTransform: FishSchoolGroupTransform;
-  rotation: number;
-  sparkleBursts?: CoinSparkle[];
+  rotation: SharedValue<number> | number;
+  sparkleBursts?: SharedValue<CoinSparkle[]> | CoinSparkle[];
 }

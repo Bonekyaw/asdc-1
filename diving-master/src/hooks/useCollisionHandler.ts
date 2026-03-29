@@ -42,6 +42,8 @@ export function useCollisionHandler(
   collectibles: CollectibleInstance[],
   removeObstacle: (id: string) => void,
   collectCollectible: (id: string, collectedAtMs: number) => void,
+  onHit?: (x: number, y: number) => void,
+  onCollect?: (kind: "coin" | "diamond", x: number, y: number) => void,
 ): CollisionHandlerState {
   const [state, setState] = useState<CollisionHandlerState>({
     lives: INITIAL_LIVES,
@@ -60,44 +62,33 @@ export function useCollisionHandler(
   const elapsedMsRef = useRef(elapsedMs);
   const removeObstacleRef = useRef(removeObstacle);
   const collectCollectibleRef = useRef(collectCollectible);
+  const onHitRef = useRef(onHit);
+  const onCollectRef = useRef(onCollect);
+  
   const rafRef = useRef<number | null>(null);
   const lastFrameRef = useRef<number | null>(null);
 
-  useEffect(() => {
-    stateRef.current = state;
-  }, [state]);
-
-  useEffect(() => {
-    obstaclesRef.current = obstacles;
-  }, [obstacles]);
-
-  useEffect(() => {
-    collectiblesRef.current = collectibles;
-  }, [collectibles]);
-
-  useEffect(() => {
-    scrollXRef.current = scrollX;
-  }, [scrollX]);
-
-  useEffect(() => {
-    elapsedMsRef.current = elapsedMs;
-  }, [elapsedMs]);
-
-  useEffect(() => {
-    removeObstacleRef.current = removeObstacle;
-  }, [removeObstacle]);
-
-  useEffect(() => {
-    collectCollectibleRef.current = collectCollectible;
-  }, [collectCollectible]);
+  useEffect(() => { stateRef.current = state; }, [state]);
+  useEffect(() => { obstaclesRef.current = obstacles; }, [obstacles]);
+  useEffect(() => { collectiblesRef.current = collectibles; }, [collectibles]);
+  useEffect(() => { scrollXRef.current = scrollX; }, [scrollX]);
+  useEffect(() => { elapsedMsRef.current = elapsedMs; }, [elapsedMs]);
+  useEffect(() => { removeObstacleRef.current = removeObstacle; }, [removeObstacle]);
+  useEffect(() => { collectCollectibleRef.current = collectCollectible; }, [collectCollectible]);
+  useEffect(() => { onHitRef.current = onHit; }, [onHit]);
+  useEffect(() => { onCollectRef.current = onCollect; }, [onCollect]);
 
   const updateSwimmerY = useCallback((nextValue: number) => {
     swimmerYRef.current = nextValue;
   }, []);
 
   useAnimatedReaction(
-    () => swimmerY.value,
+    () => {
+      "worklet";
+      return swimmerY.value;
+    },
     (value, previousValue) => {
+      "worklet";
       if (value !== previousValue) {
         runOnJS(updateSwimmerY)(value);
       }
@@ -156,6 +147,7 @@ export function useCollisionHandler(
         }
 
         collectCollectibleRef.current(collectible.id, nowMs);
+        onCollectRef.current?.(collectible.kind, collectible.worldX - scrollXRef.current, collectible.y);
         nextState = {
           ...nextState,
           score: nextState.score + collectibleScore(collectible.kind),
@@ -178,6 +170,7 @@ export function useCollisionHandler(
           }
 
           removeObstacleRef.current(obstacle.id);
+          onHitRef.current?.(obstacle.worldX - scrollXRef.current, obstacle.y);
           nextState = {
             ...nextState,
             lives: Math.max(0, nextState.lives - 1),

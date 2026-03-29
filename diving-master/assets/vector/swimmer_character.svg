@@ -1,0 +1,138 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 600" width="100%" height="100%">
+  <defs>
+    <!-- Gradients -->
+    <linearGradient id="skinGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFD6C0" />
+      <stop offset="100%" stop-color="#E8A888" />
+    </linearGradient>
+    <linearGradient id="swimwearGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2A9D8F" />
+      <stop offset="100%" stop-color="#217A6F" />
+    </linearGradient>
+    <linearGradient id="capGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F4A261" />
+      <stop offset="100%" stop-color="#E76F51" />
+    </linearGradient>
+    <linearGradient id="bubbleGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.8"/>
+      <stop offset="100%" stop-color="#A8E6CF" stop-opacity="0.2"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Root layer and world transform -->
+  <g id="root" transform="translate(500, 300)">
+    
+    <!-- Shadow beneath character -->
+    <g id="shadow" transform="translate(0, 80)">
+      <ellipse cx="0" cy="0" rx="180" ry="25" fill="#003B46" opacity="0.2" />
+    </g>
+
+    <!-- Bubbles trailing behind -->
+    <g id="bubbles_group">
+      <circle cx="-250" cy="10" r="15" fill="url(#bubbleGrad)" />
+      <circle cx="-280" cy="-20" r="8" fill="url(#bubbleGrad)" />
+      <circle cx="-220" cy="-40" r="12" fill="url(#bubbleGrad)" />
+      <circle cx="-320" cy="5" r="20" fill="url(#bubbleGrad)" />
+      <circle cx="-190" cy="20" r="6" fill="url(#bubbleGrad)" />
+      <circle cx="-150" cy="-10" r="10" fill="url(#bubbleGrad)" />
+    </g>
+
+    <!-- RIGHT LEG (Back) | Hip Pivot -->
+    <g id="right_leg" transform="translate(-80, -15)">
+      <path d="M 0,0 C -30,5 -60,20 -90,10 C -120,0 -130,-10 -140,-5 C -135,5 -110,15 -90,25 C -50,30 -20,20 0,15 Z" fill="#DFA283" />
+    </g>
+
+    <!-- RIGHT ARM (Back) | Shoulder Pivot -->
+    <g id="right_arm" transform="translate(60, -20)">
+      <path d="M 0,0 C -20,-30 -50,-50 -80,-40 C -110,-30 -120,-10 -130,0 C -110,-10 -90,-15 -70,-20 C -40,-25 -20,-10 0,10 Z" fill="#DFA283" />
+    </g>
+
+    <!-- BODY -->
+    <!-- Contains torso and swimwear elements -->
+    <g id="body">
+      <!-- Torso -->
+      <path d="M 80,-25 C 80,-25 -20,-35 -100,-25 C -120,-20 -120,20 -100,25 C -20,35 80,25 80,25 Z" fill="url(#skinGrad)" />
+      
+      <!-- Swimwear (Trunks) -->
+      <path d="M 0,-32 C 0,-32 -40,-34 -100,-25 C -120,-20 -120,20 -100,25 C -40,34 0,32 0,32 Z" fill="url(#swimwearGrad)" />
+      
+      <!-- Stripe Pattern on Swimwear -->
+      <path d="M -30,-33 L -40,33 M -50,-33 L -60,33 M -70,-31 L -80,31" stroke="#E76F51" stroke-width="4" stroke-linecap="round" opacity="0.8"/>
+    </g>
+
+    <!-- LEFT LEG (Front) | Hip Pivot -->
+    <g id="left_leg" transform="translate(-80, 15)">
+      <path d="M 0,0 C -40,10 -80,-10 -110,10 C -130,25 -140,40 -150,50 C -130,50 -110,40 -90,30 C -60,20 -30,25 0,15 Z" fill="url(#skinGrad)" />
+    </g>
+
+    <!-- HEAD RIG GROUP | Neck Pivot -->
+    <g id="neck_pivot" transform="translate(80, 0)">
+      
+      <!-- Head Base -->
+      <g id="head">
+        <ellipse cx="60" cy="-10" rx="70" ry="60" fill="url(#skinGrad)" />
+        <path d="M 125,-10 C 135,-5 130,5 125,10 Z" fill="url(#skinGrad)" /> <!-- Nose -->
+        <!-- Cheek blush -->
+        <ellipse cx="110" cy="5" rx="8" ry="4" fill="#E76F51" opacity="0.4" /> 
+      </g>
+      
+      <!-- Swim Cap -->
+      <g id="cap">
+        <path d="M -5,-15 C -5,-60 50,-80 90,-65 C 130,-50 135,-10 120,5 C 110,-20 60,-35 20,0 Z" fill="url(#capGrad)" />
+      </g>
+      
+      <!-- Eyes Right (Back eye) -->
+      <g id="eyes_right">
+        <ellipse cx="115" cy="-25" rx="6" ry="10" fill="#003B46" />
+        <circle cx="117" cy="-28" r="2" fill="#FFFFFF" />
+      </g>
+      
+      <!-- Eyes Left (Front eye) -->
+      <g id="eyes_left">
+        <ellipse cx="90" cy="-20" rx="8" ry="12" fill="#003B46" />
+        <circle cx="93" cy="-24" r="3" fill="#FFFFFF" />
+      </g>
+      
+      <!-- Mouth -->
+      <g id="mouth">
+        <!-- Smile curve -->
+        <path d="M 95,15 Q 105,25 115,10" fill="none" stroke="#D37965" stroke-width="3" stroke-linecap="round" />
+        <!-- Open mouth detail -->
+        <path d="M 100,16 Q 105,25 110,14 Q 105,18 100,16 Z" fill="#E76F51" />
+      </g>
+
+      <!-- Goggles -->
+      <g id="goggles">
+        <!-- Strap -->
+        <path d="M 20,-10 C 40,-20 70,-25 80,-25" fill="none" stroke="#264653" stroke-width="4" />
+        <path d="M 115,-25 C 120,-25 130,-22 135,-15" fill="none" stroke="#264653" stroke-width="4" />
+        <!-- Lenses -->
+        <rect x="75" y="-35" width="25" height="25" rx="10" fill="#E0FBFC" opacity="0.6" stroke="#2A9D8F" stroke-width="3" />
+        <rect x="105" y="-35" width="20" height="25" rx="10" fill="#E0FBFC" opacity="0.6" stroke="#2A9D8F" stroke-width="3" />
+        <!-- Bridge -->
+        <line x1="100" y1="-23" x2="105" y2="-23" stroke="#2A9D8F" stroke-width="3" />
+      </g>
+    </g>
+
+    <!-- LEFT ARM (Front) | Shoulder Pivot -->
+    <g id="left_arm" transform="translate(60, 20)">
+      <path d="M 0,0 C 20,40 50,60 80,45 C 110,30 130,5 140,-5 C 120,-10 90,10 60,20 C 30,30 10,15 0,-10 Z" fill="url(#skinGrad)" />
+      <path d="M 130,0 C 135,-5 145,-5 150,0 C 145,5 135,10 130,5 Z" fill="url(#skinGrad)" /> <!-- Thumb/Paddle -->
+    </g>
+
+    <!-- HIGHLIGHTS / CAUSTICS -->
+    <g id="highlights">
+      <!-- Soft water caustics over the character -->
+      <path d="M -50,-10 Q 0,10 50,-15" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" opacity="0.4" />
+      <path d="M 10,15 Q 40,25 70,10" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" opacity="0.3" />
+      <path d="M -80,-5 Q -60,10 -40,-5" fill="none" stroke="#FFFFFF" stroke-width="1.5" stroke-linecap="round" opacity="0.3" />
+      
+      <!-- Water Droplets -->
+      <circle cx="-10" cy="-5" r="3" fill="#FFFFFF" opacity="0.6" />
+      <circle cx="-12" cy="-8" r="1.5" fill="#FFFFFF" opacity="0.9" />
+      <circle cx="40" cy="5" r="4" fill="#FFFFFF" opacity="0.5" />
+      <circle cx="38" cy="2" r="2" fill="#FFFFFF" opacity="0.8" />
+    </g>
+
+  </g>
+</svg>

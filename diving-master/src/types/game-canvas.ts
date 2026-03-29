@@ -29,4 +29,8 @@ export interface GameCanvasProps {
    * `drag`: follow finger with spring smoothing (default).
    */
   touchControlMode?: SwimmerTouchControlMode;
+  /** Fired when user selects "Play Again" on Game Over screen */
+  onPlayAgain?: () => void;
+  /** Fired when user selects "Main Menu" on Game Over screen */
+  onMainMenu?: () => void;
 }

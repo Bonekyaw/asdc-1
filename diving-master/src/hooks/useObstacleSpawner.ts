@@ -89,6 +89,8 @@ export interface ObstacleSpawnerState {
   obstacles: ObstacleInstance[];
 }
 
+import type { ScrollController } from "@/src/hooks/useScrollController";
+
 export interface UseObstacleSpawnerResult extends ObstacleSpawnerState {
   removeObstacle: (id: string) => void;
 }
@@ -276,6 +278,7 @@ function createObstacle(id: string, kind: ObstacleKind, worldX: number): Obstacl
 export function useObstacleSpawner(
   paused: boolean,
   level: number,
+  scrollController: ScrollController
 ): UseObstacleSpawnerResult {
   const [state, setState] = useState<ObstacleSpawnerState>({
     elapsedMs: 0,
@@ -350,9 +353,8 @@ export function useObstacleSpawner(
       const prev = stateRef.current;
       const elapsedMs = elapsedRef.current;
       const currentLevel = level;
-      const speedMultiplier = getSpeedMultiplier(currentLevel);
-      const scrollAdvance = CORAL_SCROLL_UNITS_PER_MS * speedMultiplier * dt;
-      const scrollX = prev.scrollX + scrollAdvance;
+      const speedMultiplier = scrollController.speedMultiplier.value;
+      const scrollX = scrollController.scrollX.value;
 
       let obstacles = prev.obstacles
         .map((obstacle) => ({
@@ -433,7 +435,7 @@ export function useObstacleSpawner(
       rafRef.current = null;
       lastFrameRef.current = null;
     };
-  }, [level, paused, removeObstacle]);
+  }, [level, paused, removeObstacle, scrollController]);
 
   return {
     ...state,

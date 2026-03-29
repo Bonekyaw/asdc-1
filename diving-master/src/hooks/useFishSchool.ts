@@ -40,30 +40,38 @@ function randomFishCount(): number {
 function useFishBodyWobbles(
   timeMs: SharedValue<number>,
 ): FishBodyWobbleTuple {
-  const w0 = useDerivedValue(() => [
-    { rotate: Math.sin(timeMs.value * 0.007 + 0 * 0.85) * 0.3 },
-  ]);
-  const w1 = useDerivedValue(() => [
-    { rotate: Math.sin(timeMs.value * 0.007 + 1 * 0.85) * 0.3 },
-  ]);
-  const w2 = useDerivedValue(() => [
-    { rotate: Math.sin(timeMs.value * 0.007 + 2 * 0.85) * 0.3 },
-  ]);
-  const w3 = useDerivedValue(() => [
-    { rotate: Math.sin(timeMs.value * 0.007 + 3 * 0.85) * 0.3 },
-  ]);
-  const w4 = useDerivedValue(() => [
-    { rotate: Math.sin(timeMs.value * 0.007 + 4 * 0.85) * 0.3 },
-  ]);
-  const w5 = useDerivedValue(() => [
-    { rotate: Math.sin(timeMs.value * 0.007 + 5 * 0.85) * 0.3 },
-  ]);
-  const w6 = useDerivedValue(() => [
-    { rotate: Math.sin(timeMs.value * 0.007 + 6 * 0.85) * 0.3 },
-  ]);
-  const w7 = useDerivedValue(() => [
-    { rotate: Math.sin(timeMs.value * 0.007 + 7 * 0.85) * 0.3 },
-  ]);
+  const w0 = useDerivedValue(() => {
+    "worklet";
+    return [{ rotate: Math.sin(timeMs.value * 0.007 + 0 * 0.85) * 0.3 }];
+  });
+  const w1 = useDerivedValue(() => {
+    "worklet";
+    return [{ rotate: Math.sin(timeMs.value * 0.007 + 1 * 0.85) * 0.3 }];
+  });
+  const w2 = useDerivedValue(() => {
+    "worklet";
+    return [{ rotate: Math.sin(timeMs.value * 0.007 + 2 * 0.85) * 0.3 }];
+  });
+  const w3 = useDerivedValue(() => {
+    "worklet";
+    return [{ rotate: Math.sin(timeMs.value * 0.007 + 3 * 0.85) * 0.3 }];
+  });
+  const w4 = useDerivedValue(() => {
+    "worklet";
+    return [{ rotate: Math.sin(timeMs.value * 0.007 + 4 * 0.85) * 0.3 }];
+  });
+  const w5 = useDerivedValue(() => {
+    "worklet";
+    return [{ rotate: Math.sin(timeMs.value * 0.007 + 5 * 0.85) * 0.3 }];
+  });
+  const w6 = useDerivedValue(() => {
+    "worklet";
+    return [{ rotate: Math.sin(timeMs.value * 0.007 + 6 * 0.85) * 0.3 }];
+  });
+  const w7 = useDerivedValue(() => {
+    "worklet";
+    return [{ rotate: Math.sin(timeMs.value * 0.007 + 7 * 0.85) * 0.3 }];
+  });
 
   return [w0, w1, w2, w3, w4, w5, w6, w7];
 }
@@ -82,10 +90,13 @@ export function useFishSchool(
 
   const bodyWobble = useFishBodyWobbles(timeMs);
 
-  const schoolTransform = useDerivedValue(() => [
-    { translateX: anchorX.value },
-    { translateY: schoolY },
-  ]);
+  const schoolTransform = useDerivedValue(() => {
+    "worklet";
+    return [
+      { translateX: anchorX.value },
+      { translateY: schoolY },
+    ];
+  });
 
   useEffect(() => {
     fishCountSV.value = fishCount;

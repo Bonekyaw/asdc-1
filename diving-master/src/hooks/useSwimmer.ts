@@ -1,9 +1,10 @@
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { Gesture } from "react-native-gesture-handler";
 import {
   Easing,
   useDerivedValue,
   useSharedValue,
+  withSequence,
   withSpring,
   withTiming,
   type SharedValue,
@@ -26,10 +27,13 @@ export type UseSwimmerResult = Pick<
   | "armTransformRight"
   | "legTransformLeft"
   | "legTransformRight"
+  | "hitFlashOpacity"
+  | "collectSparklePhase"
 > & {
   swimmerY: SharedValue<number>;
-  /** Composed gesture — always a concrete RNGH gesture object (avoids undefined `gesture` prop). */
   touchGesture: ReturnType<typeof Gesture.Exclusive>;
+  triggerHit: () => void;
+  triggerCollect: () => void;
 };
 
 function clampSwimmerY(y: number): number {
@@ -37,7 +41,6 @@ function clampSwimmerY(y: number): number {
   return Math.min(SWIMMER_SAFE_Y_MAX, Math.max(SWIMMER_SAFE_Y_MIN, y));
 }
 
-/** Local canvas Y → logical game Y (matches Skia FitBox `contain`). */
 function touchYToGameY(
   touchY: number,
   offsetY: number,
@@ -50,10 +53,6 @@ function touchYToGameY(
 const TAP_DURATION_MS = 340;
 const DRAG_SPRING = { damping: 20, stiffness: 280, mass: 0.85 } as const;
 
-/**
- * Pass the frame clock’s `timeMs` SharedValue directly — worklets must not read
- * `.timeMs` off a plain `clock` object (it is undefined on the UI thread).
- */
 export function useSwimmer(
   timeMs: SharedValue<number>,
   widthPx: number,
@@ -67,6 +66,17 @@ export function useSwimmer(
   const fitScale = useSharedValue(1);
   const fitOffsetY = useSharedValue(0);
 
+  const isSwimming = useSharedValue(false);
+  const swimIntensity = useDerivedValue(() => {
+    "worklet";
+    return withTiming(isSwimming.value ? 1 : 0.15, { duration: 300 });
+  });
+
+  const hitOffset = useSharedValue(0);
+  const hitFlashOpacity = useSharedValue(0);
+  const jumpOffset = useSharedValue(0);
+  const collectSparklePhase = useSharedValue(0);
+
   useEffect(() => {
     const w = Math.max(widthPx, 1);
     const h = Math.max(heightPx, 1);
@@ -75,29 +85,48 @@ export function useSwimmer(
     fitOffsetY.value = (h - GAME_HEIGHT * scale) / 2;
   }, [widthPx, heightPx, fitScale, fitOffsetY]);
 
-  const phase = useDerivedValue(() => timeMs.value * SWIM_PHASE_SPEED);
+  const phase = useDerivedValue(() => {
+    "worklet";
+    return timeMs.value * SWIM_PHASE_SPEED;
+  });
 
-  const armTransformLeft = useDerivedValue(() => [
-    { rotate: Math.sin(phase.value) * 0.62 },
-  ]);
-  const armTransformRight = useDerivedValue(() => [
-    { rotate: -Math.sin(phase.value) * 0.62 },
-  ]);
-  const legTransformLeft = useDerivedValue(() => [
-    { rotate: Math.sin(phase.value + 1.15) * 0.42 },
-  ]);
-  const legTransformRight = useDerivedValue(() => [
-    { rotate: -Math.sin(phase.value + 1.15) * 0.42 },
-  ]);
+  const armTransformLeft = useDerivedValue(() => {
+    "worklet";
+    return [{ rotate: Math.sin(phase.value) * 0.62 * swimIntensity.value }];
+  });
+  const armTransformRight = useDerivedValue(() => {
+    "worklet";
+    return [{ rotate: -Math.sin(phase.value) * 0.62 * swimIntensity.value }];
+  });
+  const legTransformLeft = useDerivedValue(() => {
+    "worklet";
+    return [{ rotate: Math.sin(phase.value + 1.15) * 0.42 * swimIntensity.value }];
+  });
+  const legTransformRight = useDerivedValue(() => {
+    "worklet";
+    return [{ rotate: -Math.sin(phase.value + 1.15) * 0.42 * swimIntensity.value }];
+  });
 
-  const rootTransform = useDerivedValue(() => [
-    { translateX: SWIMMER_ANCHOR_X },
-    { translateY: swimmerY.value },
-  ]);
+  const idleFloatY = useDerivedValue(() => {
+    "worklet";
+    return Math.sin(timeMs.value * 0.003) * 12 * (1 - swimIntensity.value);
+  });
+
+  const rootTransform = useDerivedValue(() => {
+    "worklet";
+    return [
+      { translateX: SWIMMER_ANCHOR_X + hitOffset.value },
+      { translateY: swimmerY.value + idleFloatY.value + jumpOffset.value },
+    ];
+  });
 
   const touchGesture = useMemo(() => {
     const tap = Gesture.Tap()
       .enabled(touchMode === "tap")
+      .onBegin(() => {
+        "worklet";
+        isSwimming.value = true;
+      })
       .onEnd((e) => {
         "worklet";
         const gy = touchYToGameY(e.y, fitOffsetY.value, fitScale.value);
@@ -105,18 +134,52 @@ export function useSwimmer(
           duration: TAP_DURATION_MS,
           easing: Easing.out(Easing.cubic),
         });
+      })
+      .onFinalize(() => {
+        "worklet";
+        isSwimming.value = false;
       });
 
     const pan = Gesture.Pan()
       .enabled(touchMode === "drag")
+      .onBegin(() => {
+        "worklet";
+        isSwimming.value = true;
+      })
       .onUpdate((e) => {
         "worklet";
         const gy = touchYToGameY(e.y, fitOffsetY.value, fitScale.value);
         swimmerY.value = withSpring(clampSwimmerY(gy), DRAG_SPRING);
+      })
+      .onFinalize(() => {
+        "worklet";
+        isSwimming.value = false;
       });
 
     return Gesture.Exclusive(tap, pan);
-  }, [touchMode, swimmerY, fitOffsetY, fitScale]);
+  }, [touchMode, swimmerY, fitOffsetY, fitScale, isSwimming]);
+
+  const triggerHit = useCallback(() => {
+    hitOffset.value = withSequence(
+      withTiming(-30, { duration: 100, easing: Easing.out(Easing.quad) }),
+      withTiming(0, { duration: 300, easing: Easing.in(Easing.quad) })
+    );
+    hitFlashOpacity.value = withSequence(
+      withTiming(0.8, { duration: 50 }),
+      withTiming(0, { duration: 350 })
+    );
+  }, [hitOffset, hitFlashOpacity]);
+
+  const triggerCollect = useCallback(() => {
+    jumpOffset.value = withSequence(
+      withTiming(-20, { duration: 150, easing: Easing.out(Easing.circle) }),
+      withTiming(0, { duration: 250, easing: Easing.in(Easing.bounce) })
+    );
+    collectSparklePhase.value = withSequence(
+      withTiming(0, { duration: 0 }),
+      withTiming(1, { duration: 600, easing: Easing.out(Easing.cubic) })
+    );
+  }, [jumpOffset, collectSparklePhase]);
 
   return {
     swimmerY,
@@ -125,6 +188,10 @@ export function useSwimmer(
     armTransformRight: armTransformRight as SwimmerProps["armTransformRight"],
     legTransformLeft: legTransformLeft as SwimmerProps["legTransformLeft"],
     legTransformRight: legTransformRight as SwimmerProps["legTransformRight"],
+    hitFlashOpacity,
+    collectSparklePhase,
     touchGesture,
+    triggerHit,
+    triggerCollect,
   };
 }
