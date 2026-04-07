@@ -4,6 +4,7 @@ import { useFrameCallback, useSharedValue } from "react-native-reanimated";
 import type { FrameClock } from "@/src/types/game-canvas";
 
 const DEFAULT_DELTA_MS = 16;
+const MAX_FRAME_DELTA_MS = 34;
 
 export interface UseGameFrameOptions {
   /** When false, callback does not run until setActive(true). Default true. */
@@ -23,10 +24,12 @@ export function useGameFrame(options: UseGameFrameOptions = {}): FrameClock {
 
   const frame = useFrameCallback((frameInfo) => {
     "worklet";
-    const dt =
-      frameInfo.timeSincePreviousFrame ?? DEFAULT_DELTA_MS;
+    const dt = Math.min(
+      MAX_FRAME_DELTA_MS,
+      Math.max(0, frameInfo.timeSincePreviousFrame ?? DEFAULT_DELTA_MS),
+    );
     deltaMs.value = dt;
-    timeMs.value = frameInfo.timeSinceFirstFrame;
+    timeMs.value += dt;
   }, false);
 
   useEffect(() => {
@@ -35,6 +38,9 @@ export function useGameFrame(options: UseGameFrameOptions = {}): FrameClock {
     } else if (autostart) {
       frame.setActive(true);
     }
+    return () => {
+      frame.setActive(false);
+    };
   }, [paused, autostart, frame]);
 
   return {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { StyleSheet, View, Text, TouchableOpacity, useWindowDimensions } from "react-native";
 import Animated, { FadeIn, SlideInDown, ZoomIn } from "react-native-reanimated";
 import { Canvas, Fill, FitBox, rect } from "@shopify/react-native-skia";
@@ -20,7 +20,7 @@ export interface StartScreenProps {
 export function StartScreen({ onStartGame, onSettings }: StartScreenProps) {
   const { width, height } = useWindowDimensions();
   const clock = useGameFrame({ autostart: true, paused: false });
-  const scrollController = useScrollController(1, false);
+  const scrollController = useScrollController(1, clock.timeMs);
   const swimmer = useSwimmer(clock.timeMs, width, height, "tap");
   const { highScore } = useScoreManager(0);
 

@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, useRef, useCallback } from "react";
 import { StyleSheet, View, useWindowDimensions } from "react-native";
 import { GestureDetector } from "react-native-gesture-handler";
-import { Canvas, Fill, FitBox, Group, rect, BackdropFilter, Blur } from "@shopify/react-native-skia";
+import { Canvas, Fill, FitBox, Group, rect } from "@shopify/react-native-skia";
 import Animated, { FadeIn, useSharedValue, withTiming, withSequence, Easing } from "react-native-reanimated";
 
 import type { FrameClock, GameCanvasProps } from "@/src/types/game-canvas";
@@ -48,22 +48,25 @@ export function GameCanvas({
   const [isGameOver, setIsGameOver] = useState(false);
   const [levelUpFreeze, setLevelUpFreeze] = useState(false);
   const [scoreForDifficulty, setScoreForDifficulty] = useState(0);
+  const levelUpFreezeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const gamePaused = paused || isGameOver || levelUpFreeze;
   const clock = useGameFrame({ autostart: true, paused: gamePaused });
 
   const src = rect(0, 0, GAME_WIDTH, GAME_HEIGHT);
   const dst = rect(0, 0, width, height);
 
-  const globalBlur = useSharedValue(0);
+  const gameOverDimOpacity = useSharedValue(0);
   const screenFlash = useSharedValue(0);
 
   const swimmer = useSwimmer(clock.timeMs, width, height, touchControlMode);
   const levelState = useLevelManager(scoreForDifficulty);
-  const scrollController = useScrollController(levelState.level, gamePaused);
-  const obstacleState = useObstacleSpawner(gamePaused, levelState.level, scrollController);
+  const scrollController = useScrollController(levelState.level, clock.timeMs);
+  const obstacleState = useObstacleSpawner(gamePaused, levelState.level, scrollController, clock.timeMs);
   const collectibleState = useCollectibleSpawner(
     gamePaused,
-    obstacleState.scrollX,
+    clock.timeMs,
+    scrollController.scrollX,
+    scrollController.speedMultiplier,
     swimmer.swimmerY,
     obstacleState.obstacles,
   );
@@ -82,8 +85,9 @@ export function GameCanvas({
 
   const collisionState = useCollisionHandler(
     gamePaused,
-    obstacleState.elapsedMs,
-    obstacleState.scrollX,
+    clock.timeMs,
+    scrollController.scrollX,
+    scrollController.speedMultiplier,
     swimmer.swimmerY,
     obstacleState.obstacles,
     collectibleState.collectibles,
@@ -106,17 +110,35 @@ export function GameCanvas({
         withTiming(1, { duration: 150, easing: Easing.out(Easing.ease) }),
         withTiming(0, { duration: 600, easing: Easing.in(Easing.ease) })
       );
-      setTimeout(() => setLevelUpFreeze(false), 800);
+      if (levelUpFreezeTimeoutRef.current != null) {
+        clearTimeout(levelUpFreezeTimeoutRef.current);
+      }
+      levelUpFreezeTimeoutRef.current = setTimeout(() => {
+        setLevelUpFreeze(false);
+        levelUpFreezeTimeoutRef.current = null;
+      }, 800);
     }
     previousLevel.current = levelState.level;
   }, [levelState.level, addParticleEffect, screenFlash]);
 
   useEffect(() => {
+    return () => {
+      if (levelUpFreezeTimeoutRef.current != null) {
+        clearTimeout(levelUpFreezeTimeoutRef.current);
+        levelUpFreezeTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     if (collisionState.lives <= 0) {
       setIsGameOver(true);
-      globalBlur.value = withTiming(8, { duration: 1000, easing: Easing.out(Easing.cubic) });
+      gameOverDimOpacity.value = withTiming(1, {
+        duration: 1000,
+        easing: Easing.out(Easing.cubic),
+      });
     }
-  }, [collisionState.lives, globalBlur]);
+  }, [collisionState.lives, gameOverDimOpacity]);
 
   useEffect(() => {
     setScoreForDifficulty(collisionState.score);
@@ -165,11 +187,9 @@ export function GameCanvas({
               />
 
               {/* Hit flash overlay */}
-              {collisionState.hitFlashOpacity > 0 ? (
-                <Group opacity={collisionState.hitFlashOpacity}>
-                  <Fill color="#ef444433" />
-                </Group>
-              ) : null}
+              <Group opacity={collisionState.hitFlashOpacity}>
+                <Fill color="#ef444433" />
+              </Group>
             </>
           );
 
@@ -188,9 +208,9 @@ export function GameCanvas({
                 <Fill color="#FFFFFF" />
               </Group>
               {isGameOver && (
-                <BackdropFilter filter={<Blur blur={globalBlur} />} clip={rect(0, 0, GAME_WIDTH, GAME_HEIGHT)}>
-                  <Fill color="rgba(0, 0, 0, 0.4)" />
-                </BackdropFilter>
+                <Group opacity={gameOverDimOpacity}>
+                  <Fill color="rgba(0, 0, 0, 0.55)" />
+                </Group>
               )}
             </FitBox>
           </Canvas>

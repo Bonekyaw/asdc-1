@@ -1,4 +1,4 @@
-import { StyleSheet, View, Text, TouchableOpacity } from "react-native";
+import { StyleSheet, Text, TouchableOpacity } from "react-native";
 import Animated, { FadeIn, ZoomIn, SlideInDown } from "react-native-reanimated";
 
 export interface GameOverScreenProps {

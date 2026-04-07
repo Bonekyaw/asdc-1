@@ -25,6 +25,17 @@ In the output, you'll find options to open the app in a
 
 You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
 
+## Performance Profiling
+
+Use the React Native Performance Monitor while testing gameplay changes:
+
+1. Start the app with `npx expo start`.
+2. Open the developer menu on device or simulator.
+3. Enable `Show Performance Monitor`.
+4. Watch JS/UI FPS while spawning dense obstacle waves and collecting long item chains.
+
+The current gameplay loop is tuned to keep active obstacle and collectible counts capped, recycle pooled objects, and drive runtime motion from Reanimated shared values so FPS drops are easier to isolate in the monitor.
+
 ## Get a fresh project
 
 When you're ready, run:

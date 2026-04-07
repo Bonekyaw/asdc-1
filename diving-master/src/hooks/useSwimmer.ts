@@ -66,11 +66,7 @@ export function useSwimmer(
   const fitScale = useSharedValue(1);
   const fitOffsetY = useSharedValue(0);
 
-  const isSwimming = useSharedValue(false);
-  const swimIntensity = useDerivedValue(() => {
-    "worklet";
-    return withTiming(isSwimming.value ? 1 : 0.15, { duration: 300 });
-  });
+  const swimIntensity = useSharedValue(0.15);
 
   const hitOffset = useSharedValue(0);
   const hitFlashOpacity = useSharedValue(0);
@@ -125,7 +121,7 @@ export function useSwimmer(
       .enabled(touchMode === "tap")
       .onBegin(() => {
         "worklet";
-        isSwimming.value = true;
+        swimIntensity.value = withTiming(1, { duration: 220 });
       })
       .onEnd((e) => {
         "worklet";
@@ -137,14 +133,14 @@ export function useSwimmer(
       })
       .onFinalize(() => {
         "worklet";
-        isSwimming.value = false;
+        swimIntensity.value = withTiming(0.15, { duration: 280 });
       });
 
     const pan = Gesture.Pan()
       .enabled(touchMode === "drag")
       .onBegin(() => {
         "worklet";
-        isSwimming.value = true;
+        swimIntensity.value = withTiming(1, { duration: 220 });
       })
       .onUpdate((e) => {
         "worklet";
@@ -153,11 +149,11 @@ export function useSwimmer(
       })
       .onFinalize(() => {
         "worklet";
-        isSwimming.value = false;
+        swimIntensity.value = withTiming(0.15, { duration: 280 });
       });
 
     return Gesture.Exclusive(tap, pan);
-  }, [touchMode, swimmerY, fitOffsetY, fitScale, isSwimming]);
+  }, [touchMode, swimmerY, fitOffsetY, fitScale, swimIntensity]);
 
   const triggerHit = useCallback(() => {
     hitOffset.value = withSequence(

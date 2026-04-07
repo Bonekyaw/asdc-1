@@ -46,6 +46,7 @@ export function useScoreManager(score: number): ScoreManagerState {
   const [isLoaded, setIsLoaded] = useState(false);
   const previousScoreRef = useRef(score);
   const animationFrameRef = useRef<number | null>(null);
+  const persistTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -118,8 +119,27 @@ export function useScoreManager(score: number): ScoreManagerState {
     }
 
     setHighScore(score);
-    void writeHighScore(score).catch(() => {});
+    if (persistTimeoutRef.current != null) {
+      clearTimeout(persistTimeoutRef.current);
+    }
+    persistTimeoutRef.current = setTimeout(() => {
+      void writeHighScore(score).catch(() => {});
+      persistTimeoutRef.current = null;
+    }, 250);
   }, [highScore, isLoaded, score]);
+
+  useEffect(() => {
+    return () => {
+      if (persistTimeoutRef.current != null) {
+        clearTimeout(persistTimeoutRef.current);
+        persistTimeoutRef.current = null;
+      }
+      if (animationFrameRef.current != null) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+    };
+  }, []);
 
   return useMemo(
     () => ({

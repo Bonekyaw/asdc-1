@@ -1,23 +1,22 @@
+import { memo } from "react";
 import { useDerivedValue, type SharedValue } from "react-native-reanimated";
 
 import { FishSchool } from "@/src/components/FishSchool";
 import { SeaTurtle } from "@/src/components/SeaTurtle";
 import { Coral } from "@/src/components/Coral";
-import type {
-  FishObstacle,
-  TurtleObstacle,
-  CoralObstacle,
-  ObstacleInstance,
+import {
+  getTurtleOffsetY,
+  getObstacleWorldOffsetX,
+  getFishBodyWobbleTransforms,
+  getTurtleFlipperTransforms,
+  type FishObstacle,
+  type TurtleObstacle,
+  type CoralObstacle,
+  type ObstacleInstance,
 } from "@/src/hooks/useObstacleSpawner";
-import {
-  FISH_SPEED_UNITS_PER_MS,
-  FISH_SPACING,
-} from "@/src/constants/fish-school";
-import {
-  SEA_TURTLE_FREQ_TO_BOB_HZ,
-  SEA_TURTLE_SPEED_UNITS_PER_MS,
-} from "@/src/constants/sea-turtle";
 import type { FishBodyWobbleTuple, FishSchoolGroupTransform } from "@/src/types/fish-school";
+
+
 
 // ---------- Fish ----------
 
@@ -34,29 +33,24 @@ function GameFishObstacle({
 }) {
   const schoolTransform = useDerivedValue(() => {
     "worklet";
-    const screenX = obstacle.worldX - scrollX.value;
+    const worldX = getObstacleWorldOffsetX(obstacle, timeMs.value, speedMultiplier.value);
+    const screenX = worldX - scrollX.value;
     return [
       { translateX: screenX },
       { translateY: obstacle.y },
     ];
   });
 
-  const w0 = useDerivedValue(() => { "worklet"; return [{ rotate: Math.sin(timeMs.value * 0.007 + 0 * 0.85) * 0.3 }]; });
-  const w1 = useDerivedValue(() => { "worklet"; return [{ rotate: Math.sin(timeMs.value * 0.007 + 1 * 0.85) * 0.3 }]; });
-  const w2 = useDerivedValue(() => { "worklet"; return [{ rotate: Math.sin(timeMs.value * 0.007 + 2 * 0.85) * 0.3 }]; });
-  const w3 = useDerivedValue(() => { "worklet"; return [{ rotate: Math.sin(timeMs.value * 0.007 + 3 * 0.85) * 0.3 }]; });
-  const w4 = useDerivedValue(() => { "worklet"; return [{ rotate: Math.sin(timeMs.value * 0.007 + 4 * 0.85) * 0.3 }]; });
-  const w5 = useDerivedValue(() => { "worklet"; return [{ rotate: Math.sin(timeMs.value * 0.007 + 5 * 0.85) * 0.3 }]; });
-  const w6 = useDerivedValue(() => { "worklet"; return [{ rotate: Math.sin(timeMs.value * 0.007 + 6 * 0.85) * 0.3 }]; });
-  const w7 = useDerivedValue(() => { "worklet"; return [{ rotate: Math.sin(timeMs.value * 0.007 + 7 * 0.85) * 0.3 }]; });
-
-  const bodyWobble = [w0, w1, w2, w3, w4, w5, w6, w7] as unknown as FishBodyWobbleTuple;
+  const bodyWobble = useDerivedValue(() => {
+    "worklet";
+    return getFishBodyWobbleTransforms(timeMs.value - obstacle.spawnTimeMs);
+  });
 
   return (
     <FishSchool
       fishCount={obstacle.fishCount}
       schoolTransform={schoolTransform as unknown as FishSchoolGroupTransform}
-      bodyWobble={bodyWobble}
+      bodyWobble={bodyWobble as unknown as FishBodyWobbleTuple}
     />
   );
 }
@@ -76,32 +70,35 @@ function GameTurtleObstacle({
 }) {
   const rootTransform = useDerivedValue(() => {
     "worklet";
-    const screenX = obstacle.worldX - scrollX.value;
-    const tSec = timeMs.value * 0.001;
-    const fBob = obstacle.frequency * SEA_TURTLE_FREQ_TO_BOB_HZ;
-    const phase = 2 * Math.PI * fBob * tSec;
-    const yOffset = obstacle.baseY + obstacle.amplitude * Math.sin(phase);
+    const worldX = getObstacleWorldOffsetX(obstacle, timeMs.value, speedMultiplier.value);
+    const screenX = worldX - scrollX.value;
+    const yOffset = getTurtleOffsetY(obstacle, timeMs.value);
     return [
       { translateX: screenX },
       { translateY: yOffset },
     ];
   });
 
+  const flippers = useDerivedValue(() => {
+    "worklet";
+    return getTurtleFlipperTransforms(timeMs.value - obstacle.spawnTimeMs);
+  });
+
   const flipperFrontUpper = useDerivedValue(() => {
     "worklet";
-    return [{ rotate: Math.sin(timeMs.value * 0.011 + 0.4) * 0.52 }];
+    return flippers.value.flipperFrontUpper;
   });
   const flipperFrontLower = useDerivedValue(() => {
     "worklet";
-    return [{ rotate: Math.sin(timeMs.value * 0.011 + 2.1) * -0.48 }];
+    return flippers.value.flipperFrontLower;
   });
   const flipperRearUpper = useDerivedValue(() => {
     "worklet";
-    return [{ rotate: Math.sin(timeMs.value * 0.009 + 1.2) * 0.42 }];
+    return flippers.value.flipperRearUpper;
   });
   const flipperRearLower = useDerivedValue(() => {
     "worklet";
-    return [{ rotate: Math.sin(timeMs.value * 0.009 + 2.9) * -0.4 }];
+    return flippers.value.flipperRearLower;
   });
 
   return (
@@ -120,13 +117,15 @@ function GameTurtleObstacle({
 function GameCoralObstacle({
   obstacle,
   scrollX,
+  timeMs,
 }: {
   obstacle: CoralObstacle;
   scrollX: SharedValue<number>;
+  timeMs: SharedValue<number>;
 }) {
   const rootTransform = useDerivedValue(() => {
     "worklet";
-    const screenX = obstacle.worldX - scrollX.value;
+    const screenX = getObstacleWorldOffsetX(obstacle, timeMs.value, 1) - scrollX.value;
     return [
       { translateX: screenX },
       { translateY: obstacle.baseY },
@@ -146,7 +145,7 @@ function GameCoralObstacle({
 
 // ---------- Dispatcher ----------
 
-export function GameObstacle({
+export const GameObstacle = memo(function GameObstacle({
   obstacle,
   scrollX,
   timeMs,
@@ -183,6 +182,7 @@ export function GameObstacle({
     <GameCoralObstacle
       obstacle={obstacle}
       scrollX={scrollX}
+      timeMs={timeMs}
     />
   );
-}
+});

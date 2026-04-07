@@ -1,4 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  runOnJS,
+  useFrameCallback,
+  useSharedValue,
+  type SharedValue,
+} from "react-native-reanimated";
 
 import {
   CORAL_DESPAWN_PAST_LEFT,
@@ -14,6 +20,7 @@ import {
   FISH_SPRITE_LENGTH,
 } from "@/src/constants/fish-school";
 import { GAME_HEIGHT, GAME_WIDTH } from "@/src/constants/game-viewport";
+import type { ScrollController } from "@/src/hooks/useScrollController";
 import {
   SEA_TURTLE_AMPLITUDE_MAX,
   SEA_TURTLE_AMPLITUDE_MIN,
@@ -35,8 +42,8 @@ export type ObstacleKind = "fish" | "turtle" | "coral";
 export type FishObstacle = {
   id: string;
   kind: "fish";
-  x: number;
   worldX: number;
+  spawnTimeMs: number;
   y: number;
   fishCount: number;
   width: number;
@@ -48,10 +55,9 @@ export type FishObstacle = {
 export type TurtleObstacle = {
   id: string;
   kind: "turtle";
-  x: number;
   worldX: number;
+  spawnTimeMs: number;
   baseY: number;
-  y: number;
   amplitude: number;
   frequency: number;
   width: number;
@@ -63,10 +69,8 @@ export type TurtleObstacle = {
 export type CoralObstacle = {
   id: string;
   kind: "coral";
-  x: number;
   worldX: number;
   baseY: number;
-  y: number;
   scale: number;
   branchPath: string;
   innerBranchPath: string;
@@ -83,17 +87,22 @@ export type ObstacleInstance =
   | CoralObstacle;
 
 export interface ObstacleSpawnerState {
-  elapsedMs: number;
-  level: number;
-  scrollX: number;
   obstacles: ObstacleInstance[];
 }
-
-import type { ScrollController } from "@/src/hooks/useScrollController";
 
 export interface UseObstacleSpawnerResult extends ObstacleSpawnerState {
   removeObstacle: (id: string) => void;
 }
+
+type ObstacleFrameSnapshot = {
+  id: string;
+  kind: ObstacleKind;
+  worldX: number;
+  spawnTimeMs: number;
+  width: number;
+  speed: number;
+  despawnPastLeft: number;
+};
 
 const FISH_WEIGHT = 0.4;
 const TURTLE_WEIGHT = 0.35;
@@ -104,7 +113,6 @@ const MAX_INTERVAL_FLOOR_MS = 2200;
 const MIN_OBSTACLE_DISTANCE = 180;
 const SPAWN_BUFFER_X = 48;
 const COMPLEX_PATTERN_GAP_X = 160;
-const SCROLL_SPEED_PER_LEVEL = 0.1;
 const SPAWN_RATE_PER_LEVEL = 0.15;
 const SAFE_ZONE_TOP = 70;
 const SAFE_ZONE_BOTTOM = GAME_HEIGHT - 54;
@@ -114,6 +122,7 @@ const TURTLE_Y_MIN = 120;
 const TURTLE_Y_MAX = GAME_HEIGHT - 120;
 const CORAL_BASE_Y_MIN = GAME_HEIGHT - 70;
 const CORAL_BASE_Y_MAX = GAME_HEIGHT - 28;
+const MAX_FRAME_STEP_MS = 48;
 
 const CORAL_PALETTES: readonly CoralPalette[] = [
   { base: "#ec4899", mid: "#f472b6", highlight: "#fbcfe8" },
@@ -141,12 +150,14 @@ const CORAL_VARIANTS = [
       "M -19 10 Q -19 -8 -16 -22 Q -12 -36 -15 -51 Q -7 -44 -4 -28 Q 0 -40 -2 -62 Q 6 -54 9 -37 Q 14 -47 13 -64 Q 21 -54 22 -34 Q 23 -16 20 10 Z",
   },
 ] as const;
+const MAX_ACTIVE_OBSTACLES = 12;
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
 }
 
 function randomBetween(min: number, max: number): number {
+  "worklet";
   return min + Math.random() * (max - min);
 }
 
@@ -173,11 +184,8 @@ function randomObstacleKind(): ObstacleKind {
   return "coral";
 }
 
-function getSpeedMultiplier(level: number): number {
-  return 1 + Math.max(0, level - 1) * SCROLL_SPEED_PER_LEVEL;
-}
-
 function nextSpawnIntervalMs(level: number): number {
+  "worklet";
   const spawnRateMultiplier = 1 + Math.max(0, level - 1) * SPAWN_RATE_PER_LEVEL;
   const min = Math.max(MIN_INTERVAL_FLOOR_MS, MIN_SPAWN_INTERVAL_MS / spawnRateMultiplier);
   const max = Math.max(MAX_INTERVAL_FLOOR_MS, MAX_SPAWN_INTERVAL_MS / spawnRateMultiplier);
@@ -185,6 +193,7 @@ function nextSpawnIntervalMs(level: number): number {
 }
 
 function getSpawnBatchSize(level: number): number {
+  "worklet";
   if (level >= 5 && Math.random() < 0.2) {
     return 3;
   }
@@ -205,13 +214,13 @@ function getFurthestWorldX(obstacles: ObstacleInstance[], fallback: number): num
   return furthest;
 }
 
-function createFishObstacle(id: string, worldX: number): FishObstacle {
+function createFishObstacle(id: string, worldX: number, spawnTimeMs: number): FishObstacle {
   const fishCount = randomIntInclusive(FISH_SCHOOL_MIN, FISH_SCHOOL_MAX);
   return {
     id,
     kind: "fish",
-    x: worldX,
     worldX,
+    spawnTimeMs,
     y: clamp(randomBetween(FISH_Y_MIN, FISH_Y_MAX), SAFE_ZONE_TOP, SAFE_ZONE_BOTTOM),
     fishCount,
     width: (fishCount - 1) * FISH_SPACING + FISH_SPRITE_LENGTH,
@@ -221,7 +230,7 @@ function createFishObstacle(id: string, worldX: number): FishObstacle {
   };
 }
 
-function createTurtleObstacle(id: string, worldX: number): TurtleObstacle {
+function createTurtleObstacle(id: string, worldX: number, spawnTimeMs: number): TurtleObstacle {
   const amplitude = randomBetween(SEA_TURTLE_AMPLITUDE_MIN, SEA_TURTLE_AMPLITUDE_MAX);
   const minBaseY = Math.max(TURTLE_Y_MIN, SAFE_ZONE_TOP + amplitude);
   const maxBaseY = Math.min(TURTLE_Y_MAX, SAFE_ZONE_BOTTOM - amplitude);
@@ -229,10 +238,9 @@ function createTurtleObstacle(id: string, worldX: number): TurtleObstacle {
   return {
     id,
     kind: "turtle",
-    x: worldX,
     worldX,
+    spawnTimeMs,
     baseY: randomBetween(minBaseY, Math.max(minBaseY + 1, maxBaseY)),
-    y: 0,
     amplitude,
     frequency: randomBetween(SEA_TURTLE_FREQUENCY_MIN, SEA_TURTLE_FREQUENCY_MAX),
     width: SEA_TURTLE_SPRITE_LENGTH,
@@ -249,10 +257,8 @@ function createCoralObstacle(id: string, worldX: number): CoralObstacle {
   return {
     id,
     kind: "coral",
-    x: worldX,
     worldX,
     baseY: randomBetween(CORAL_BASE_Y_MIN, CORAL_BASE_Y_MAX),
-    y: 0,
     scale,
     branchPath: variant.branchPath,
     innerBranchPath: variant.innerBranchPath,
@@ -264,63 +270,90 @@ function createCoralObstacle(id: string, worldX: number): CoralObstacle {
   };
 }
 
-function createObstacle(id: string, kind: ObstacleKind, worldX: number): ObstacleInstance {
+function createObstacle(
+  id: string,
+  kind: ObstacleKind,
+  worldX: number,
+  spawnTimeMs: number,
+): ObstacleInstance {
   switch (kind) {
     case "fish":
-      return createFishObstacle(id, worldX);
+      return createFishObstacle(id, worldX, spawnTimeMs);
     case "turtle":
-      return createTurtleObstacle(id, worldX);
+      return createTurtleObstacle(id, worldX, spawnTimeMs);
     case "coral":
       return createCoralObstacle(id, worldX);
   }
 }
 
+function getObstacleWorldX(
+  obstacle: ObstacleInstance,
+  elapsedMs: number,
+  speedMultiplier: number,
+): number {
+  "worklet";
+  if (obstacle.kind === "coral") {
+    return obstacle.worldX;
+  }
+  return obstacle.worldX - obstacle.speed * speedMultiplier * Math.max(0, elapsedMs - obstacle.spawnTimeMs);
+}
+
+function releaseObstacle(obstacle: ObstacleInstance): void {
+  void obstacle;
+}
+
 export function useObstacleSpawner(
   paused: boolean,
   level: number,
-  scrollController: ScrollController
+  scrollController: ScrollController,
+  timeMs: SharedValue<number>,
 ): UseObstacleSpawnerResult {
   const [state, setState] = useState<ObstacleSpawnerState>({
-    elapsedMs: 0,
-    level: 1,
-    scrollX: 0,
     obstacles: [],
   });
 
-  const rafRef = useRef<number | null>(null);
-  const lastFrameRef = useRef<number | null>(null);
-  const elapsedRef = useRef(0);
   const obstacleIdRef = useRef(0);
-  const nextSpawnInMsRef = useRef(nextSpawnIntervalMs(1));
   const stateRef = useRef(state);
+  const obstacleSnapshots = useSharedValue<ObstacleFrameSnapshot[]>([]);
+  const nextSpawnInMs = useSharedValue(nextSpawnIntervalMs(1));
+  const lastUpdateTimeMs = useSharedValue(0);
+  const jsFrameDispatchPending = useSharedValue(false);
 
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
 
   useEffect(() => {
-    setState((current) => {
-      if (current.level === level) {
-        return current;
-      }
+    obstacleSnapshots.value = state.obstacles.map((obstacle) => ({
+      id: obstacle.id,
+      kind: obstacle.kind,
+      worldX: obstacle.worldX,
+      spawnTimeMs: obstacle.kind === "coral" ? 0 : obstacle.spawnTimeMs,
+      width: obstacle.width,
+      speed: obstacle.speed,
+      despawnPastLeft: obstacle.despawnPastLeft,
+    }));
+    jsFrameDispatchPending.value = false;
+  }, [jsFrameDispatchPending, obstacleSnapshots, state.obstacles]);
 
-      const nextState = {
-        ...current,
-        level,
-      };
-      stateRef.current = nextState;
-      return nextState;
-    });
-
-    nextSpawnInMsRef.current = Math.min(nextSpawnInMsRef.current, nextSpawnIntervalMs(level));
-  }, [level]);
+  useEffect(() => {
+    nextSpawnInMs.value = Math.min(nextSpawnInMs.value, nextSpawnIntervalMs(level));
+  }, [level, nextSpawnInMs]);
 
   const removeObstacle = useCallback((id: string) => {
     setState((current) => {
-      const filtered = current.obstacles.filter((obstacle) => obstacle.id !== id);
-      if (filtered.length === current.obstacles.length) {
+      let removed: ObstacleInstance | null = null;
+      const filtered = current.obstacles.filter((obstacle) => {
+        if (obstacle.id === id) {
+          removed = obstacle;
+          return false;
+        }
+        return true;
+      });
+      if (removed == null) {
         return current;
       }
+      releaseObstacle(removed);
 
       const nextState = {
         ...current,
@@ -331,111 +364,133 @@ export function useObstacleSpawner(
     });
   }, []);
 
-  useEffect(() => {
-    if (paused) {
-      if (rafRef.current != null) {
-        cancelAnimationFrame(rafRef.current);
-        rafRef.current = null;
-      }
-      lastFrameRef.current = null;
+  const processFrameEvents = useCallback((
+    removeIds: string[],
+    spawnBatchSize: number,
+    elapsedMs: number,
+    scrollX: number,
+  ) => {
+    if (removeIds.length === 0 && spawnBatchSize === 0) {
       return;
     }
 
-    const tick = (frameTime: number) => {
-      if (lastFrameRef.current == null) {
-        lastFrameRef.current = frameTime;
+    const removeIdSet = new Set(removeIds);
+    let changed = false;
+    setState((current) => {
+      const nextObstacles: ObstacleInstance[] = [];
+
+      for (const obstacle of current.obstacles) {
+        if (removeIdSet.has(obstacle.id)) {
+          releaseObstacle(obstacle);
+          changed = true;
+          continue;
+        }
+        nextObstacles.push(obstacle);
       }
 
-      const dt = frameTime - lastFrameRef.current;
-      lastFrameRef.current = frameTime;
-      elapsedRef.current += dt;
+      if (spawnBatchSize > 0 && nextObstacles.length < MAX_ACTIVE_OBSTACLES) {
+        const furthestWorldX = getFurthestWorldX(nextObstacles, scrollX + GAME_WIDTH);
+        const spawned: ObstacleInstance[] = [];
 
-      const prev = stateRef.current;
-      const elapsedMs = elapsedRef.current;
-      const currentLevel = level;
-      const speedMultiplier = scrollController.speedMultiplier.value;
-      const scrollX = scrollController.scrollX.value;
-
-      let obstacles = prev.obstacles
-        .map((obstacle) => ({
-          ...obstacle,
-          x:
-            obstacle.kind === "coral"
-              ? obstacle.worldX
-              : obstacle.worldX - obstacle.speed * speedMultiplier * dt,
-          worldX:
-            obstacle.kind === "coral"
-              ? obstacle.worldX
-              : obstacle.worldX - obstacle.speed * speedMultiplier * dt,
-          y:
-            obstacle.kind === "turtle"
-              ? obstacle.baseY +
-                obstacle.amplitude *
-                  Math.sin(
-                    2 *
-                      Math.PI *
-                      (obstacle.frequency * SEA_TURTLE_FREQ_TO_BOB_HZ) *
-                      (elapsedMs * 0.001),
-                  )
-              : obstacle.kind === "coral"
-                ? obstacle.baseY - obstacle.height
-                : obstacle.y - obstacle.height * 0.5,
-        }))
-        .filter((obstacle) => obstacle.worldX + obstacle.width >= -obstacle.despawnPastLeft);
-
-      nextSpawnInMsRef.current -= dt;
-
-      if (nextSpawnInMsRef.current <= 0) {
-        const furthestWorldX = getFurthestWorldX(obstacles, scrollX + GAME_WIDTH);
-        const spawnBatchSize = getSpawnBatchSize(currentLevel);
-        const nextObstacles: ObstacleInstance[] = [];
-
-        for (let index = 0; index < spawnBatchSize; index += 1) {
+        for (
+          let index = 0;
+          index < spawnBatchSize && nextObstacles.length + spawned.length < MAX_ACTIVE_OBSTACLES;
+          index += 1
+        ) {
           const kind = randomObstacleKind();
           const previousRightEdge =
-            nextObstacles.length > 0
-              ? nextObstacles[nextObstacles.length - 1].worldX +
-                nextObstacles[nextObstacles.length - 1].width
+            spawned.length > 0
+              ? spawned[spawned.length - 1].worldX + spawned[spawned.length - 1].width
               : furthestWorldX;
           const spawnWorldX = Math.max(
             scrollX + GAME_WIDTH + SPAWN_BUFFER_X,
             previousRightEdge +
               MIN_OBSTACLE_DISTANCE +
-              index * Math.max(0, COMPLEX_PATTERN_GAP_X - 40 * (currentLevel - 1)),
+              index * Math.max(0, COMPLEX_PATTERN_GAP_X - 40 * (level - 1)),
           );
 
           obstacleIdRef.current += 1;
-          nextObstacles.push(
-            createObstacle(`obstacle-${obstacleIdRef.current}`, kind, spawnWorldX),
+          spawned.push(
+            createObstacle(`obstacle-${obstacleIdRef.current}`, kind, spawnWorldX, elapsedMs),
           );
         }
 
-        obstacles = [...obstacles, ...nextObstacles];
-        nextSpawnInMsRef.current = nextSpawnIntervalMs(currentLevel);
+        if (spawned.length > 0) {
+          nextObstacles.push(...spawned);
+          changed = true;
+        }
       }
 
-      const nextState: ObstacleSpawnerState = {
-        elapsedMs,
-        level: currentLevel,
-        scrollX,
-        obstacles,
-      };
+      if (!changed) {
+        return current;
+      }
 
+      const nextState: ObstacleSpawnerState = { obstacles: nextObstacles };
       stateRef.current = nextState;
-      setState(nextState);
-      rafRef.current = requestAnimationFrame(tick);
-    };
+      return nextState;
+    });
+    queueMicrotask(() => {
+      jsFrameDispatchPending.value = false;
+    });
+  }, [jsFrameDispatchPending, level]);
 
-    rafRef.current = requestAnimationFrame(tick);
+  const frame = useFrameCallback(() => {
+    "worklet";
+    const elapsedMs = timeMs.value;
+    const deltaMs = Math.min(
+      MAX_FRAME_STEP_MS,
+      Math.max(0, elapsedMs - lastUpdateTimeMs.value),
+    );
+    lastUpdateTimeMs.value = elapsedMs;
 
-    return () => {
-      if (rafRef.current != null) {
-        cancelAnimationFrame(rafRef.current);
+    if (jsFrameDispatchPending.value) {
+      return;
+    }
+
+    const speedMultiplier = scrollController.speedMultiplier.value;
+    const scrollX = scrollController.scrollX.value;
+    const snapshots = obstacleSnapshots.value;
+    const removeIds: string[] = [];
+
+    for (let index = 0; index < snapshots.length; index += 1) {
+      const obstacle = snapshots[index];
+      const obstacleWorldX =
+        obstacle.kind === "coral"
+          ? obstacle.worldX
+          : obstacle.worldX - obstacle.speed * speedMultiplier * Math.max(0, elapsedMs - obstacle.spawnTimeMs);
+      if (obstacleWorldX + obstacle.width < -obstacle.despawnPastLeft) {
+        removeIds.push(obstacle.id);
       }
-      rafRef.current = null;
-      lastFrameRef.current = null;
+    }
+
+    nextSpawnInMs.value -= deltaMs;
+
+    let spawnBatchSize = 0;
+    const activeAfterRemovals = snapshots.length - removeIds.length;
+    if (nextSpawnInMs.value <= 0 && activeAfterRemovals < MAX_ACTIVE_OBSTACLES) {
+      spawnBatchSize = getSpawnBatchSize(level);
+      nextSpawnInMs.value = nextSpawnIntervalMs(level);
+    }
+
+    if (removeIds.length > 0 || spawnBatchSize > 0) {
+      jsFrameDispatchPending.value = true;
+      runOnJS(processFrameEvents)(removeIds, spawnBatchSize, elapsedMs, scrollX);
+    }
+  }, false);
+
+  useEffect(() => {
+    lastUpdateTimeMs.value = timeMs.value;
+    frame.setActive(!paused);
+    return () => frame.setActive(false);
+  }, [frame, lastUpdateTimeMs, paused, timeMs]);
+
+  useEffect(() => {
+    return () => {
+      for (const obstacle of stateRef.current.obstacles) {
+        releaseObstacle(obstacle);
+      }
     };
-  }, [level, paused, removeObstacle, scrollController]);
+  }, []);
 
   return {
     ...state,
@@ -446,6 +501,7 @@ export function useObstacleSpawner(
 export function getFishBodyWobbleTransforms(
   elapsedMs: number,
 ): FishBodyWobbleTuple {
+  "worklet";
   return [
     [{ rotate: Math.sin(elapsedMs * 0.007 + 0 * 0.85) * 0.3 }],
     [{ rotate: Math.sin(elapsedMs * 0.007 + 1 * 0.85) * 0.3 }],
@@ -464,6 +520,7 @@ export function getTurtleFlipperTransforms(elapsedMs: number): {
   flipperRearUpper: FishSchoolGroupTransform;
   flipperRearLower: FishSchoolGroupTransform;
 } {
+  "worklet";
   return {
     flipperFrontUpper: [{ rotate: Math.sin(elapsedMs * 0.011 + 0.4) * 0.52 }],
     flipperFrontLower: [{ rotate: Math.sin(elapsedMs * 0.011 + 2.1) * -0.48 }],
@@ -472,10 +529,30 @@ export function getTurtleFlipperTransforms(elapsedMs: number): {
   };
 }
 
+type TurtleMotionSample = Pick<
+  TurtleObstacle,
+  "baseY" | "amplitude" | "frequency" | "spawnTimeMs"
+>;
+
 export function getTurtleOffsetY(
-  obstacle: TurtleObstacle,
+  obstacle: TurtleMotionSample,
   elapsedMs: number,
 ): number {
-  const phase = 2 * Math.PI * (obstacle.frequency * SEA_TURTLE_FREQ_TO_BOB_HZ) * (elapsedMs * 0.001);
+  "worklet";
+  const turtleElapsedMs = Math.max(0, elapsedMs - obstacle.spawnTimeMs);
+  const phase =
+    2 *
+    Math.PI *
+    (obstacle.frequency * SEA_TURTLE_FREQ_TO_BOB_HZ) *
+    (turtleElapsedMs * 0.001);
   return obstacle.baseY + obstacle.amplitude * Math.sin(phase);
+}
+
+export function getObstacleWorldOffsetX(
+  obstacle: ObstacleInstance,
+  elapsedMs: number,
+  speedMultiplier: number,
+): number {
+  "worklet";
+  return getObstacleWorldX(obstacle, elapsedMs, speedMultiplier);
 }

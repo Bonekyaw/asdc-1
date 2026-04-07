@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  runOnJS,
   type SharedValue,
+  useFrameCallback,
+  useSharedValue,
 } from "react-native-reanimated";
 
 import {
+  COIN_SIZE,
   COIN_DESPAWN_PAST_LEFT,
   COIN_INITIAL_WORLD_X,
   COIN_ROTATION_PERIOD_MS,
@@ -12,6 +16,7 @@ import {
   COIN_SPARKLE_DURATION_MS,
 } from "@/src/constants/coin";
 import {
+  DIAMOND_SIZE,
   DIAMOND_DESPAWN_PAST_LEFT,
   DIAMOND_PULSE_PERIOD_MS,
   DIAMOND_SPARKLE_DURATION_MS,
@@ -22,7 +27,6 @@ import type { ObstacleInstance } from "@/src/hooks/useObstacleSpawner";
 import {
   getCollectibleAabb,
   getObstacleAabb,
-  getSpawnCollectibleAabb,
   overlapsAabb,
 } from "@/src/utils/collision";
 
@@ -32,11 +36,12 @@ const COLLECTIBLE_MAX_SPAWN_INTERVAL_MS = 3000;
 const COLLECTIBLE_PATTERN_GAP_X = 38;
 const COLLECTIBLE_PATTERN_SAFE_MARGIN = 20;
 const COLLECTIBLE_ARC_HEIGHT = 34;
+const MAX_ACTIVE_COLLECTIBLES = 16;
+const MAX_FRAME_STEP_MS = 48;
 
 export interface CollectibleInstance {
   id: string;
   kind: "coin" | "diamond";
-  x: number;
   worldX: number;
   y: number;
   width: number;
@@ -45,7 +50,6 @@ export interface CollectibleInstance {
 }
 
 export interface UseCollectibleSpawnerResult {
-  elapsedMs: number;
   collectibles: CollectibleInstance[];
 }
 
@@ -58,11 +62,20 @@ export interface UseCollectibleSpawnerResultWithActions
   extends UseCollectibleSpawnerResult,
     CollectibleSpawnerActions {}
 
+type CollectibleFrameSnapshot = {
+  id: string;
+  kind: CollectibleInstance["kind"];
+  worldX: number;
+  collectedAtMs: number | null;
+};
+
 function randomBetween(min: number, max: number): number {
+  "worklet";
   return min + Math.random() * (max - min);
 }
 
 function nextSpawnDelayMs(): number {
+  "worklet";
   return randomBetween(
     COLLECTIBLE_MIN_SPAWN_INTERVAL_MS,
     COLLECTIBLE_MAX_SPAWN_INTERVAL_MS,
@@ -74,10 +87,12 @@ function randomCollectibleKind(): CollectibleInstance["kind"] {
 }
 
 function collectibleDespawnPastLeft(kind: CollectibleInstance["kind"]): number {
+  "worklet";
   return kind === "diamond" ? DIAMOND_DESPAWN_PAST_LEFT : COIN_DESPAWN_PAST_LEFT;
 }
 
 function collectibleSparkleDuration(kind: CollectibleInstance["kind"]): number {
+  "worklet";
   return kind === "diamond"
     ? DIAMOND_SPARKLE_DURATION_MS
     : COIN_SPARKLE_DURATION_MS;
@@ -87,10 +102,16 @@ function overlapsObstacle(
   worldX: number,
   y: number,
   obstacles: ObstacleInstance[],
+  scrollX: number,
+  elapsedMs: number,
+  speedMultiplier: number,
 ): boolean {
-  const collectibleBox = getSpawnCollectibleAabb(worldX, y);
+  const collectibleBox = getCollectibleAabb(
+    { kind: "diamond", worldX, y },
+    scrollX,
+  );
   return obstacles.some((obstacle) => {
-    const obstacleBox = getObstacleAabb(obstacle, 0, 0);
+    const obstacleBox = getObstacleAabb(obstacle, scrollX, elapsedMs, speedMultiplier);
     return overlapsAabb(collectibleBox, obstacleBox);
   });
 }
@@ -106,6 +127,9 @@ function tryAdjustY(
   worldX: number,
   preferredY: number,
   obstacles: ObstacleInstance[],
+  scrollX: number,
+  elapsedMs: number,
+  speedMultiplier: number,
 ): number | null {
   const candidates = [
     preferredY,
@@ -116,7 +140,7 @@ function tryAdjustY(
   ].map(clampCollectibleY);
 
   for (const candidate of candidates) {
-    if (!overlapsObstacle(worldX, candidate, obstacles)) {
+    if (!overlapsObstacle(worldX, candidate, obstacles, scrollX, elapsedMs, speedMultiplier)) {
       return candidate;
     }
   }
@@ -128,8 +152,11 @@ function createSinglePattern(
   startX: number,
   baseY: number,
   obstacles: ObstacleInstance[],
+  scrollX: number,
+  elapsedMs: number,
+  speedMultiplier: number,
 ): Pick<CollectibleInstance, "worldX" | "y">[] {
-  const adjustedY = tryAdjustY(startX, baseY, obstacles);
+  const adjustedY = tryAdjustY(startX, baseY, obstacles, scrollX, elapsedMs, speedMultiplier);
   return adjustedY == null ? [] : [{ worldX: startX, y: adjustedY }];
 }
 
@@ -137,13 +164,23 @@ function createLinePattern(
   startX: number,
   baseY: number,
   obstacles: ObstacleInstance[],
+  scrollX: number,
+  elapsedMs: number,
+  speedMultiplier: number,
 ): Pick<CollectibleInstance, "worldX" | "y">[] {
   const count = 3 + Math.floor(Math.random() * 2);
   const collectibles: Pick<CollectibleInstance, "worldX" | "y">[] = [];
 
   for (let index = 0; index < count; index += 1) {
     const worldX = startX + index * COLLECTIBLE_PATTERN_GAP_X;
-    const adjustedY = tryAdjustY(worldX, baseY, obstacles);
+    const adjustedY = tryAdjustY(
+      worldX,
+      baseY,
+      obstacles,
+      scrollX,
+      elapsedMs,
+      speedMultiplier,
+    );
     if (adjustedY == null) {
       continue;
     }
@@ -157,6 +194,9 @@ function createArcPattern(
   startX: number,
   baseY: number,
   obstacles: ObstacleInstance[],
+  scrollX: number,
+  elapsedMs: number,
+  speedMultiplier: number,
 ): Pick<CollectibleInstance, "worldX" | "y">[] {
   const count = 5;
   const collectibles: Pick<CollectibleInstance, "worldX" | "y">[] = [];
@@ -166,7 +206,14 @@ function createArcPattern(
     const arcOffset = Math.sin(t * Math.PI) * COLLECTIBLE_ARC_HEIGHT;
     const worldX = startX + index * COLLECTIBLE_PATTERN_GAP_X;
     const preferredY = clampCollectibleY(baseY - arcOffset);
-    const adjustedY = tryAdjustY(worldX, preferredY, obstacles);
+    const adjustedY = tryAdjustY(
+      worldX,
+      preferredY,
+      obstacles,
+      scrollX,
+      elapsedMs,
+      speedMultiplier,
+    );
     if (adjustedY == null) {
       continue;
     }
@@ -179,18 +226,20 @@ function createArcPattern(
 function createCollectiblePattern(
   scrollX: number,
   obstacles: ObstacleInstance[],
+  elapsedMs: number,
+  speedMultiplier: number,
 ): Pick<CollectibleInstance, "worldX" | "y">[] {
   const startX = scrollX + GAME_WIDTH + randomBetween(110, 230);
   const baseY = randomBetween(COIN_SAFE_Y_MIN + 24, COIN_SAFE_Y_MAX - 24);
   const roll = Math.random();
 
   if (roll < 0.4) {
-    return createSinglePattern(startX, baseY, obstacles);
+    return createSinglePattern(startX, baseY, obstacles, scrollX, elapsedMs, speedMultiplier);
   }
   if (roll < 0.75) {
-    return createLinePattern(startX, baseY, obstacles);
+    return createLinePattern(startX, baseY, obstacles, scrollX, elapsedMs, speedMultiplier);
   }
-  return createArcPattern(startX, baseY, obstacles);
+  return createArcPattern(startX, baseY, obstacles, scrollX, elapsedMs, speedMultiplier);
 }
 
 function createCollectibleFromPatternPoint(
@@ -198,10 +247,10 @@ function createCollectibleFromPatternPoint(
   point: Pick<CollectibleInstance, "worldX" | "y">,
   initial = false,
 ): CollectibleInstance {
+  const kind = randomCollectibleKind();
   return {
     id,
-    kind: randomCollectibleKind(),
-    x: initial ? COIN_INITIAL_WORLD_X : point.worldX,
+    kind,
     worldX: initial ? COIN_INITIAL_WORLD_X : point.worldX,
     y: point.y,
     width: 34,
@@ -261,12 +310,13 @@ export function getDiamondScale(elapsedMs: number): number {
 
 export function useCollectibleSpawner(
   paused: boolean,
-  scrollX: number,
+  timeMs: SharedValue<number>,
+  scrollX: SharedValue<number>,
+  speedMultiplier: SharedValue<number>,
   _swimmerY: SharedValue<number>,
   obstacles: ObstacleInstance[],
 ): UseCollectibleSpawnerResultWithActions {
   const [state, setState] = useState<UseCollectibleSpawnerResult>({
-    elapsedMs: 0,
     collectibles: [
       createCollectibleFromPatternPoint(
         "collectible-1",
@@ -276,22 +326,27 @@ export function useCollectibleSpawner(
     ],
   });
 
-  const rafRef = useRef<number | null>(null);
-  const lastFrameRef = useRef<number | null>(null);
-  const elapsedRef = useRef(0);
   const stateRef = useRef(state);
-  const scrollXRef = useRef(scrollX);
   const obstaclesRef = useRef(obstacles);
   const collectibleIdRef = useRef(1);
-  const nextSpawnInMsRef = useRef(nextSpawnDelayMs());
+  const collectibleSnapshots = useSharedValue<CollectibleFrameSnapshot[]>([]);
+  const nextSpawnInMs = useSharedValue(nextSpawnDelayMs());
+  const lastUpdateTimeMs = useSharedValue(0);
+  const jsFrameDispatchPending = useSharedValue(false);
 
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
 
   useEffect(() => {
-    scrollXRef.current = scrollX;
-  }, [scrollX]);
+    collectibleSnapshots.value = state.collectibles.map((collectible) => ({
+      id: collectible.id,
+      kind: collectible.kind,
+      worldX: collectible.worldX,
+      collectedAtMs: collectible.collectedAtMs,
+    }));
+    jsFrameDispatchPending.value = false;
+  }, [collectibleSnapshots, jsFrameDispatchPending, state.collectibles]);
 
   useEffect(() => {
     obstaclesRef.current = obstacles;
@@ -299,8 +354,15 @@ export function useCollectibleSpawner(
 
   const removeCollectible = useCallback((id: string) => {
     setState((current) => {
-      const filtered = current.collectibles.filter((collectible) => collectible.id !== id);
-      if (filtered.length === current.collectibles.length) {
+      let removed: CollectibleInstance | null = null;
+      const filtered = current.collectibles.filter((collectible) => {
+        if (collectible.id === id) {
+          removed = collectible;
+          return false;
+        }
+        return true;
+      });
+      if (removed == null) {
         return current;
       }
 
@@ -340,83 +402,128 @@ export function useCollectibleSpawner(
     });
   }, []);
 
-  useEffect(() => {
-    if (paused) {
-      if (rafRef.current != null) {
-        cancelAnimationFrame(rafRef.current);
-      }
-      rafRef.current = null;
-      lastFrameRef.current = null;
+  const processFrameEvents = useCallback((
+    removeIds: string[],
+    shouldSpawn: boolean,
+    scrollPosition: number,
+    elapsedMs: number,
+    currentSpeedMultiplier: number,
+  ) => {
+    if (removeIds.length === 0 && !shouldSpawn) {
       return;
     }
 
-    const tick = (frameTime: number) => {
-      if (lastFrameRef.current == null) {
-        lastFrameRef.current = frameTime;
-      }
-
-      const dt = frameTime - lastFrameRef.current;
-      lastFrameRef.current = frameTime;
-      elapsedRef.current += dt;
-      const elapsedMs = elapsedRef.current;
-
-      let collectibles = stateRef.current.collectibles
-        .filter((collectible) => {
-          if (collectible.collectedAtMs != null) {
-            return (
-              elapsedMs - collectible.collectedAtMs <
-              collectibleSparkleDuration(collectible.kind)
-            );
-          }
-
-          const screenRight =
-            collectible.worldX -
-            scrollXRef.current +
-            getCollectibleAabb(collectible, scrollXRef.current).width;
-          return screenRight >= -collectibleDespawnPastLeft(collectible.kind);
-        });
-
-      nextSpawnInMsRef.current -= dt;
-      if (nextSpawnInMsRef.current <= 0) {
-        const pattern = createCollectiblePattern(
-          scrollXRef.current,
-          obstaclesRef.current,
-        );
-
-        if (pattern.length > 0) {
-          const nextCollectibles = pattern.map((point) => {
-            collectibleIdRef.current += 1;
-            return createCollectibleFromPatternPoint(
-              `collectible-${collectibleIdRef.current}`,
-              point,
-            );
-          });
-          collectibles = [...collectibles, ...nextCollectibles];
+    const removeIdSet = new Set(removeIds);
+    let changed = false;
+    setState((current) => {
+      let collectibles = current.collectibles.filter((collectible) => {
+        if (!removeIdSet.has(collectible.id)) {
+          return true;
         }
+        changed = true;
+        return false;
+      });
 
-        nextSpawnInMsRef.current = nextSpawnDelayMs();
+      if (shouldSpawn && collectibles.length < MAX_ACTIVE_COLLECTIBLES) {
+        const pattern = createCollectiblePattern(
+          scrollPosition,
+          obstaclesRef.current,
+          elapsedMs,
+          currentSpeedMultiplier,
+        );
+        if (pattern.length > 0) {
+          const nextCollectibles = pattern
+            .slice(0, Math.max(0, MAX_ACTIVE_COLLECTIBLES - collectibles.length))
+            .map((point) => {
+              collectibleIdRef.current += 1;
+              return createCollectibleFromPatternPoint(
+                `collectible-${collectibleIdRef.current}`,
+                point,
+              );
+            });
+          if (nextCollectibles.length > 0) {
+            collectibles = [...collectibles, ...nextCollectibles];
+            changed = true;
+          }
+        }
       }
 
-      const nextState: UseCollectibleSpawnerResult = {
-        elapsedMs,
-        collectibles,
-      };
+      if (!changed) {
+        return current;
+      }
 
+      const nextState: UseCollectibleSpawnerResult = { collectibles };
       stateRef.current = nextState;
-      setState(nextState);
-      rafRef.current = requestAnimationFrame(tick);
-    };
+      return nextState;
+    });
+    queueMicrotask(() => {
+      jsFrameDispatchPending.value = false;
+    });
+  }, [jsFrameDispatchPending]);
 
-    rafRef.current = requestAnimationFrame(tick);
+  const frame = useFrameCallback(() => {
+    "worklet";
+    const elapsedMs = timeMs.value;
+    const deltaMs = Math.min(
+      MAX_FRAME_STEP_MS,
+      Math.max(0, elapsedMs - lastUpdateTimeMs.value),
+    );
+    lastUpdateTimeMs.value = elapsedMs;
 
-    return () => {
-      if (rafRef.current != null) {
-        cancelAnimationFrame(rafRef.current);
+    if (jsFrameDispatchPending.value) {
+      return;
+    }
+
+    const scrollPosition = scrollX.value;
+    const currentSpeedMultiplier = speedMultiplier.value;
+    const snapshots = collectibleSnapshots.value;
+    const removeIds: string[] = [];
+
+    for (let index = 0; index < snapshots.length; index += 1) {
+      const collectible = snapshots[index];
+      if (collectible.collectedAtMs != null) {
+        if (elapsedMs - collectible.collectedAtMs >= collectibleSparkleDuration(collectible.kind)) {
+          removeIds.push(collectible.id);
+        }
+        continue;
       }
-      rafRef.current = null;
-      lastFrameRef.current = null;
-    };
-  }, [paused]);
+
+      const rightEdge =
+        collectible.worldX - scrollPosition + (collectible.kind === "diamond" ? DIAMOND_SIZE : COIN_SIZE);
+      if (rightEdge < -collectibleDespawnPastLeft(collectible.kind)) {
+        removeIds.push(collectible.id);
+      }
+    }
+
+    nextSpawnInMs.value -= deltaMs;
+    const activeAfterRemovals = snapshots.length - removeIds.length;
+    let shouldSpawn = false;
+    if (nextSpawnInMs.value <= 0 && activeAfterRemovals < MAX_ACTIVE_COLLECTIBLES) {
+      shouldSpawn = true;
+      nextSpawnInMs.value = nextSpawnDelayMs();
+    }
+
+    if (removeIds.length > 0 || shouldSpawn) {
+      jsFrameDispatchPending.value = true;
+      runOnJS(processFrameEvents)(
+        removeIds,
+        shouldSpawn,
+        scrollPosition,
+        elapsedMs,
+        currentSpeedMultiplier,
+      );
+    }
+  }, false);
+
+  useEffect(() => {
+    lastUpdateTimeMs.value = timeMs.value;
+    frame.setActive(!paused);
+    return () => frame.setActive(false);
+  }, [frame, lastUpdateTimeMs, paused, timeMs]);
+
+  useEffect(() => {
+    return () => undefined;
+  }, []);
 
   return {
     ...state,
