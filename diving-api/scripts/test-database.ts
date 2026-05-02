@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { randomUUID } from "node:crypto";
 import prisma from "../lib/prisma";
 
 async function testDatabase() {
@@ -10,10 +11,21 @@ async function testDatabase() {
 
     // Test 2: Create a test user
     console.log("\n📝 Creating a test user...");
-    const newUser = await prisma.user.create({
-      data: {
+    const now = new Date();
+    const newUser = await prisma.user.upsert({
+      where: {
         email: "demo@example.com",
+      },
+      update: {
         name: "Demo User",
+      },
+      create: {
+        id: randomUUID(),
+        email: "demo@example.com",
+        emailVerified: true,
+        name: "Demo User",
+        createdAt: now,
+        updatedAt: now,
       },
     });
     console.log("✅ Created user:", newUser);
