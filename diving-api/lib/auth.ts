@@ -108,6 +108,20 @@ async function sendVerificationEmail({
   console.info(`[auth] ${type} OTP for ${email}: ${otp}`);
 }
 
+async function isVerifiedAdminEmail(email: string) {
+  const user = await prisma.user.findUnique({
+    where: {
+      email: email.trim().toLowerCase(),
+    },
+    select: {
+      emailVerified: true,
+      role: true,
+    },
+  });
+
+  return Boolean(user?.emailVerified && user.role === "ADMIN");
+}
+
 export const auth = betterAuth({
   database: prismaAdapter(prisma, {
     provider: "postgresql",
@@ -121,6 +135,10 @@ export const auth = betterAuth({
       expiresIn: 300,
       allowedAttempts: 3,
       async sendVerificationOTP({ email, otp, type }) {
+        if (!(await isVerifiedAdminEmail(email))) {
+          throw new Error("Email is not authorized for admin access.");
+        }
+
         await sendVerificationEmail({ email, otp, type });
       },
     }),

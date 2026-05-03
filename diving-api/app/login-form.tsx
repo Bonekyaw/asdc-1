@@ -4,25 +4,11 @@ import { useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { SubmitHandler, useForm } from "react-hook-form";
 import { z } from "zod";
+import { verifyAdminEmailAction } from "./login-actions";
+import { emailFormSchema, otpFormSchema } from "./login-validation";
 import { authClient, signOut, useSession } from "@/lib/auth-client";
 
 type LoginStep = "email" | "otp";
-
-const emailFormSchema = z.object({
-  email: z
-    .string()
-    .trim()
-    .toLowerCase()
-    .min(1, "Enter your admin email address.")
-    .email("Enter a valid email address."),
-});
-
-const otpFormSchema = emailFormSchema.extend({
-  otp: z
-    .string()
-    .trim()
-    .regex(/^\d{6}$/, "Enter the 6-digit code from your email."),
-});
 
 type EmailFormInput = z.input<typeof emailFormSchema>;
 type EmailFormValues = z.output<typeof emailFormSchema>;
@@ -67,9 +53,19 @@ export function LoginForm() {
     setMessage("");
 
     try {
+      const formData = new FormData();
+      formData.set("email", data.email);
+
+      const adminEmailResult = await verifyAdminEmailAction(formData);
+
+      if (!adminEmailResult.ok) {
+        setFormError(adminEmailResult.error);
+        return;
+      }
+
       const { error: otpError } = await authClient.emailOtp.sendVerificationOtp(
         {
-          email: data.email,
+          email: adminEmailResult.email,
           type: "sign-in",
         },
       );
@@ -80,12 +76,12 @@ export function LoginForm() {
       }
 
       setStep("otp");
-      emailForm.setValue("email", data.email);
+      emailForm.setValue("email", adminEmailResult.email);
       otpForm.reset({
-        email: data.email,
+        email: adminEmailResult.email,
         otp: "",
       });
-      setMessage(`We sent a 6-digit code to ${data.email}.`);
+      setMessage(`We sent a 6-digit code to ${adminEmailResult.email}.`);
     } catch {
       setFormError("Unable to send the login code right now.");
     }
