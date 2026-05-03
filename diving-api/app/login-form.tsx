@@ -1,9 +1,33 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { useState } from "react";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { SubmitHandler, useForm } from "react-hook-form";
+import { z } from "zod";
 import { authClient, signOut, useSession } from "@/lib/auth-client";
 
 type LoginStep = "email" | "otp";
+
+const emailFormSchema = z.object({
+  email: z
+    .string()
+    .trim()
+    .toLowerCase()
+    .min(1, "Enter your admin email address.")
+    .email("Enter a valid email address."),
+});
+
+const otpFormSchema = emailFormSchema.extend({
+  otp: z
+    .string()
+    .trim()
+    .regex(/^\d{6}$/, "Enter the 6-digit code from your email."),
+});
+
+type EmailFormInput = z.input<typeof emailFormSchema>;
+type EmailFormValues = z.output<typeof emailFormSchema>;
+type OtpFormInput = z.input<typeof otpFormSchema>;
+type OtpFormValues = z.output<typeof otpFormSchema>;
 
 function normalizeOtp(value: string) {
   return value.replace(/\D/g, "").slice(0, 6);
@@ -16,87 +40,85 @@ function getErrorMessage(error: { message?: string } | null | undefined) {
 export function LoginForm() {
   const { data: session, isPending } = useSession();
   const [step, setStep] = useState<LoginStep>("email");
-  const [email, setEmail] = useState("");
-  const [otp, setOtp] = useState("");
   const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [formError, setFormError] = useState("");
   const [showLogin, setShowLogin] = useState(false);
+  const emailForm = useForm<EmailFormInput, unknown, EmailFormValues>({
+    resolver: zodResolver(emailFormSchema),
+    defaultValues: {
+      email: "",
+    },
+  });
+  const otpForm = useForm<OtpFormInput, unknown, OtpFormValues>({
+    resolver: zodResolver(otpFormSchema),
+    defaultValues: {
+      email: "",
+      otp: "",
+    },
+  });
 
-  const normalizedEmail = useMemo(() => email.trim().toLowerCase(), [email]);
+  const isSubmitting =
+    emailForm.formState.isSubmitting || otpForm.formState.isSubmitting;
+  const emailError = emailForm.formState.errors.email?.message;
+  const otpError = otpForm.formState.errors.otp?.message;
 
-  async function requestOtp(event?: FormEvent<HTMLFormElement>) {
-    event?.preventDefault();
-    setError("");
+  const requestOtp: SubmitHandler<EmailFormValues> = async (data) => {
+    setFormError("");
     setMessage("");
 
-    if (!normalizedEmail) {
-      setError("Enter your admin email address.");
-      return;
-    }
-
-    setIsSubmitting(true);
-
     try {
-      const { error: otpError } =
-        await authClient.emailOtp.sendVerificationOtp({
-          email: normalizedEmail,
+      const { error: otpError } = await authClient.emailOtp.sendVerificationOtp(
+        {
+          email: data.email,
           type: "sign-in",
-        });
+        },
+      );
 
       if (otpError) {
-        setError(getErrorMessage(otpError));
+        setFormError(getErrorMessage(otpError));
         return;
       }
 
       setStep("otp");
-      setOtp("");
-      setMessage(`We sent a 6-digit code to ${normalizedEmail}.`);
+      emailForm.setValue("email", data.email);
+      otpForm.reset({
+        email: data.email,
+        otp: "",
+      });
+      setMessage(`We sent a 6-digit code to ${data.email}.`);
     } catch {
-      setError("Unable to send the login code right now.");
-    } finally {
-      setIsSubmitting(false);
+      setFormError("Unable to send the login code right now.");
     }
-  }
+  };
 
-  async function verifyOtp(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError("");
+  const verifyOtp: SubmitHandler<OtpFormValues> = async (data) => {
+    setFormError("");
     setMessage("");
-
-    if (otp.length !== 6) {
-      setError("Enter the 6-digit code from your email.");
-      return;
-    }
-
-    setIsSubmitting(true);
 
     try {
       const { error: signInError } = await authClient.signIn.emailOtp({
-        email: normalizedEmail,
-        otp,
+        email: data.email,
+        otp: data.otp,
       });
 
       if (signInError) {
-        setError(getErrorMessage(signInError));
+        setFormError(getErrorMessage(signInError));
         return;
       }
 
       setShowLogin(false);
       setMessage("Signed in successfully.");
     } catch {
-      setError("Unable to verify the code right now.");
-    } finally {
-      setIsSubmitting(false);
+      setFormError("Unable to verify the code right now.");
     }
-  }
+  };
 
   async function handleSignOut() {
     setShowLogin(true);
     setStep("email");
-    setEmail("");
-    setOtp("");
-    setError("");
+    emailForm.reset({ email: "" });
+    otpForm.reset({ email: "", otp: "" });
+    setFormError("");
     setMessage("");
     await signOut();
   }
@@ -188,7 +210,10 @@ export function LoginForm() {
             </div>
 
             {step === "email" ? (
-              <form onSubmit={requestOtp} className="space-y-5">
+              <form
+                onSubmit={emailForm.handleSubmit(requestOtp)}
+                className="space-y-5"
+              >
                 <div>
                   <label
                     htmlFor="email"
@@ -198,19 +223,21 @@ export function LoginForm() {
                   </label>
                   <input
                     id="email"
-                    name="email"
                     type="email"
                     autoComplete="email"
-                    value={email}
-                    onChange={(event) => setEmail(event.target.value)}
+                    aria-invalid={Boolean(emailError)}
                     placeholder="admin@example.com"
+                    {...emailForm.register("email")}
                     className="mt-2 h-12 w-full rounded-md border border-slate-300 bg-white px-4 text-base text-slate-950 outline-none transition placeholder:text-slate-400 focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10"
                   />
+                  {emailError ? (
+                    <p className="mt-2 text-sm text-red-700">{emailError}</p>
+                  ) : null}
                 </div>
 
-                {error ? (
+                {formError ? (
                   <p className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">
-                    {error}
+                    {formError}
                   </p>
                 ) : null}
 
@@ -223,7 +250,11 @@ export function LoginForm() {
                 </button>
               </form>
             ) : (
-              <form onSubmit={verifyOtp} className="space-y-5">
+              <form
+                onSubmit={otpForm.handleSubmit(verifyOtp)}
+                className="space-y-5"
+              >
+                <input type="hidden" {...otpForm.register("email")} />
                 <div>
                   <label
                     htmlFor="otp"
@@ -233,16 +264,20 @@ export function LoginForm() {
                   </label>
                   <input
                     id="otp"
-                    name="otp"
                     inputMode="numeric"
                     autoComplete="one-time-code"
-                    value={otp}
-                    onChange={(event) =>
-                      setOtp(normalizeOtp(event.target.value))
-                    }
+                    aria-invalid={Boolean(otpError)}
                     placeholder="000000"
+                    {...otpForm.register("otp", {
+                      onChange: (event) => {
+                        event.target.value = normalizeOtp(event.target.value);
+                      },
+                    })}
                     className="mt-2 h-14 w-full rounded-md border border-slate-300 bg-white px-4 text-center font-mono text-2xl tracking-[0.3em] text-slate-950 outline-none transition placeholder:text-slate-300 focus:border-teal-600 focus:ring-4 focus:ring-teal-600/10"
                   />
+                  {otpError ? (
+                    <p className="mt-2 text-sm text-red-700">{otpError}</p>
+                  ) : null}
                 </div>
 
                 {message ? (
@@ -251,9 +286,9 @@ export function LoginForm() {
                   </p>
                 ) : null}
 
-                {error ? (
+                {formError ? (
                   <p className="rounded-md bg-red-50 px-4 py-3 text-sm text-red-700">
-                    {error}
+                    {formError}
                   </p>
                 ) : null}
 
@@ -270,8 +305,8 @@ export function LoginForm() {
                     type="button"
                     onClick={() => {
                       setStep("email");
-                      setOtp("");
-                      setError("");
+                      otpForm.reset({ email: "", otp: "" });
+                      setFormError("");
                       setMessage("");
                     }}
                     className="font-medium text-slate-600 transition hover:text-slate-950"
@@ -280,7 +315,7 @@ export function LoginForm() {
                   </button>
                   <button
                     type="button"
-                    onClick={() => requestOtp()}
+                    onClick={() => void emailForm.handleSubmit(requestOtp)()}
                     disabled={isSubmitting}
                     className="font-medium text-teal-700 transition hover:text-teal-900 disabled:text-slate-400"
                   >
