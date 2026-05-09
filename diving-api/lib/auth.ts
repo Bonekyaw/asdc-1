@@ -116,10 +116,11 @@ async function isVerifiedAdminEmail(email: string) {
     select: {
       emailVerified: true,
       role: true,
+      adminRole: true,
     },
   });
 
-  return Boolean(user?.emailVerified && user.role === "ADMIN");
+  return Boolean(user?.emailVerified && user.role === "ADMIN" && user.adminRole);
 }
 
 export const auth = betterAuth({

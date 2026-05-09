@@ -14,6 +14,7 @@ async function main() {
     update: {
       emailVerified: true,
       role: "ADMIN",
+      adminRole: "SUPER_ADMIN",
       updatedAt: now,
     },
     create: {
@@ -24,6 +25,7 @@ async function main() {
       createdAt: now,
       updatedAt: now,
       role: "ADMIN",
+      adminRole: "SUPER_ADMIN",
     },
   });
 

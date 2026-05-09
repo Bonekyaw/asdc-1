@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { SubmitHandler, useForm } from "react-hook-form";
 import { z } from "zod";
 import { verifyAdminEmailAction } from "./login-actions";
 import { emailFormSchema, otpFormSchema } from "./login-validation";
-import { authClient, signOut, useSession } from "@/lib/auth-client";
+import { authClient } from "@/lib/auth-client";
 
 type LoginStep = "email" | "otp";
 
@@ -24,11 +25,10 @@ function getErrorMessage(error: { message?: string } | null | undefined) {
 }
 
 export function LoginForm() {
-  const { data: session, isPending } = useSession();
+  const router = useRouter();
   const [step, setStep] = useState<LoginStep>("email");
   const [message, setMessage] = useState("");
   const [formError, setFormError] = useState("");
-  const [showLogin, setShowLogin] = useState(false);
   const emailForm = useForm<EmailFormInput, unknown, EmailFormValues>({
     resolver: zodResolver(emailFormSchema),
     defaultValues: {
@@ -102,63 +102,12 @@ export function LoginForm() {
         return;
       }
 
-      setShowLogin(false);
       setMessage("Signed in successfully.");
+      router.refresh();
     } catch {
       setFormError("Unable to verify the code right now.");
     }
   };
-
-  async function handleSignOut() {
-    setShowLogin(true);
-    setStep("email");
-    emailForm.reset({ email: "" });
-    otpForm.reset({ email: "", otp: "" });
-    setFormError("");
-    setMessage("");
-    await signOut();
-  }
-
-  if (!showLogin && !isPending && session?.user) {
-    return (
-      <main className="min-h-dvh bg-[#f6f7fb] px-6 py-8 text-slate-950">
-        <section className="mx-auto flex min-h-[calc(100dvh-4rem)] w-full max-w-5xl flex-col justify-between">
-          <header className="flex items-center justify-between gap-4">
-            <div>
-              <p className="text-sm font-medium uppercase tracking-[0.18em] text-teal-700">
-                Diving Admin
-              </p>
-              <h1 className="mt-2 text-2xl font-semibold">Dashboard access</h1>
-            </div>
-            <button
-              type="button"
-              onClick={handleSignOut}
-              className="h-10 rounded-md border border-slate-300 px-4 text-sm font-medium text-slate-700 transition hover:border-slate-400 hover:bg-white"
-            >
-              Sign out
-            </button>
-          </header>
-
-          <div className="grid gap-6 py-12 md:grid-cols-[1.1fr_0.9fr] md:items-end">
-            <div>
-              <p className="text-sm font-medium text-teal-700">
-                Authenticated session
-              </p>
-              <h2 className="mt-3 max-w-2xl text-4xl font-semibold tracking-tight text-slate-950 sm:text-5xl">
-                Welcome back to the admin dashboard.
-              </h2>
-            </div>
-            <div className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
-              <p className="text-sm text-slate-500">Signed in as</p>
-              <p className="mt-2 break-all text-base font-medium text-slate-950">
-                {session.user.email}
-              </p>
-            </div>
-          </div>
-        </section>
-      </main>
-    );
-  }
 
   return (
     <main className="min-h-dvh bg-[#f6f7fb] text-slate-950">

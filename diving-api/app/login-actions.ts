@@ -34,10 +34,16 @@ export async function verifyAdminEmailAction(
     select: {
       emailVerified: true,
       role: true,
+      adminRole: true,
     },
   });
 
-  if (!user || !user.emailVerified || user.role !== "ADMIN") {
+  if (
+    !user ||
+    !user.emailVerified ||
+    user.role !== "ADMIN" ||
+    !user.adminRole
+  ) {
     return {
       ok: false,
       error: "Use an authenticated admin email address.",

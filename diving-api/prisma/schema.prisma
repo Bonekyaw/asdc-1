@@ -17,6 +17,13 @@ enum Role {
   ADMIN
 }
 
+enum AdminRole {
+  SUPER_ADMIN
+  MANAGER
+  EDITOR
+  STAFF
+}
+
 model User {
   id            String    @id
   name          String
@@ -33,6 +40,8 @@ model User {
   highestScore Int  @default(0)
   currentLevel Int  @default(1)
   role         Role @default(PLAYER)
+  adminRole    AdminRole?
+  playerBanUntil DateTime?
 
   @@unique([email])
   @@map("user")
