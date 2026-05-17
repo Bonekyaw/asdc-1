@@ -12,10 +12,12 @@
     "db:studio": "prisma studio"
   },
   "dependencies": {
+    "@better-auth/expo": "^1.6.10",
     "@hookform/resolvers": "^5.2.2",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
-    "better-auth": "^1.6.9",
+    "@prisma/extension-accelerate": "^3.0.1",
+    "better-auth": "^1.6.10",
     "dotenv": "^17.4.2",
     "next": "16.2.1-canary.4",
     "pg": "^8.20.0",

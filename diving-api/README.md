@@ -1,5 +1,43 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Environment variables
+
+Copy `.env.example` to `.env` and fill in values.
+
+| Variable | Purpose |
+|----------|---------|
+| `DATABASE_URL` | **Pooled** Postgres URL for the app (`pooled.db.prisma.io` on Prisma Postgres) |
+| `DIRECT_URL` | **Direct** URL for Prisma CLI migrations (`db.prisma.io` on Prisma Postgres) |
+| `BETTER_AUTH_SECRET` | Secret for signing sessions (long random string) |
+| `BETTER_AUTH_URL` | Public base URL of this app (e.g. `http://localhost:3000`) — used for OAuth redirects |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google OAuth (mobile app uses Better Auth Expo + Google sign-in) |
+
+In Google Cloud Console, set the OAuth **Authorized redirect URI** to:
+
+`${BETTER_AUTH_URL}/api/auth/callback/google`
+
+(Player accounts use the default Prisma `User.role` of `PLAYER` when created via social login.)
+
+### Database connection
+
+The app supports either:
+
+| Variable | Format | Used for |
+|----------|--------|----------|
+| `DATABASE_URL` | `prisma+postgres://...` (Accelerate) | App runtime when `POSTGRES_URL` is unset |
+| `POSTGRES_URL` | `postgres://...@pooled.db.prisma.io...` | App runtime via `@prisma/adapter-pg` (overrides Accelerate) |
+| `DIRECT_URL` | `postgres://...@db.prisma.io...` | `prisma migrate` / Studio |
+
+Run `npm run db:test` to verify. For TCP URLs from [Prisma Console](https://console.prisma.io), copy **pooled** + **direct** strings as in `.env.example`.
+
+### npm peer dependencies
+
+This project uses `--legacy-peer-deps` because `next` is a canary release and some peers resolve strictly. An `.npmrc` with `legacy-peer-deps=true` is included; otherwise run:
+
+```bash
+npm install --legacy-peer-deps
+```
+
 ## Getting Started
 
 First, run the development server:

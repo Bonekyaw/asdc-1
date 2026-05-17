@@ -2,6 +2,7 @@ import { useState } from "react";
 import { StyleSheet, View } from "react-native";
 import Animated, { FadeIn, FadeOut, ZoomIn } from "react-native-reanimated";
 
+import { authClient } from "@/lib/auth-client";
 import { GameCrashBoundary } from "@/src/components/GameCrashBoundary";
 import { GameCanvas } from "@/src/components/GameCanvas";
 import { StartScreen } from "@/src/components/StartScreen";
@@ -15,7 +16,12 @@ export default function GameScreen() {
       <GameCrashBoundary>
         {gameState === "start" ? (
           <Animated.View key="start" entering={FadeIn.duration(400)} exiting={FadeOut.duration(400)} style={StyleSheet.absoluteFill}>
-            <StartScreen onStartGame={() => setGameState("playing")} />
+            <StartScreen
+              onStartGame={() => setGameState("playing")}
+              onSignOut={() => {
+                void authClient.signOut();
+              }}
+            />
           </Animated.View>
         ) : (
           <Animated.View key={`game-${gameKey}`} entering={ZoomIn.duration(500)} exiting={FadeOut.duration(400)} style={StyleSheet.absoluteFill}>

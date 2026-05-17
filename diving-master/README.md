@@ -2,6 +2,23 @@
 
 This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
 
+## Authentication (diving-api)
+
+This app signs in with **Better Auth** + **Google** against the [`diving-api`](../diving-api) Next.js backend.
+
+1. Copy [`.env.example`](./.env.example) to `.env` and set **`EXPO_PUBLIC_AUTH_URL`** (no trailing slash). Use the **same host** as **`BETTER_AUTH_URL`** in `diving-api/.env` (e.g. both `http://127.0.0.1:3000` on simulator — do not mix `localhost` and `127.0.0.1`).
+2. Configure **Google OAuth** and **`diving-api`** env vars as described in [`diving-api/README.md`](../diving-api/README.md) (especially **`BETTER_AUTH_URL`**, **`BETTER_AUTH_SECRET`**, **`GOOGLE_CLIENT_ID`**, **`GOOGLE_CLIENT_SECRET`**).
+3. Set **`EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`** to the same **Web** OAuth client ID as **`GOOGLE_CLIENT_ID`** on the API (required for native Google Sign-In on Android).
+4. **iOS dev builds:** set **`EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID`**, then rebuild the dev client. Native sign-in does **not** fall back to browser OAuth.
+5. **Expo Go** uses browser OAuth only. **Development builds** use native Google Sign-In (one account picker, no second browser).
+6. **Manual verification:** After signing in with Google once, confirm in Postgres that a row exists in **`user`** with **`role`** `PLAYER` and a linked **`account`** row for provider **`google`**.
+
+If `npm install` hits peer dependency conflicts with `better-auth`, use:
+
+```bash
+npm install --legacy-peer-deps
+```
+
 ## Get started
 
 1. Install dependencies

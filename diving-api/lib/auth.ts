@@ -1,7 +1,21 @@
+import { expo } from "@better-auth/expo";
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { emailOTP } from "better-auth/plugins";
 import prisma from "@/lib/prisma";
+
+function trustedOrigins(): string[] {
+  const appScheme = ["divingmaster://", "divingmaster://*"];
+  if (process.env.NODE_ENV === "development") {
+    return [
+      ...appScheme,
+      "exp://",
+      "exp://**",
+      "exp://192.168.*.*:*/**",
+    ];
+  }
+  return appScheme;
+}
 
 async function sendVerificationEmail({
   email,
@@ -123,12 +137,36 @@ async function isVerifiedAdminEmail(email: string) {
   return Boolean(user?.emailVerified && user.role === "ADMIN" && user.adminRole);
 }
 
+function resolveAuthSecret(): string {
+  const secret = process.env.BETTER_AUTH_SECRET;
+  if (secret) {
+    return secret;
+  }
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("BETTER_AUTH_SECRET is required in production.");
+  }
+  return "dev-better-auth-secret-replace-with-BETTER_AUTH_SECRET";
+}
+
 export const auth = betterAuth({
+  baseURL: process.env.BETTER_AUTH_URL ?? "http://localhost:3000",
+  secret: resolveAuthSecret(),
+  trustedOrigins: trustedOrigins(),
   database: prismaAdapter(prisma, {
     provider: "postgresql",
   }),
   emailAndPassword: {
     enabled: true,
+  },
+  socialProviders: {
+    google: {
+      clientId: [
+        process.env.GOOGLE_CLIENT_ID ?? "",
+        process.env.GOOGLE_IOS_CLIENT_ID ?? "",
+        process.env.GOOGLE_ANDROID_CLIENT_ID ?? "",
+      ].filter(Boolean),
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
+    },
   },
   plugins: [
     emailOTP({
@@ -143,5 +181,6 @@ export const auth = betterAuth({
         await sendVerificationEmail({ email, otp, type });
       },
     }),
+    expo(),
   ],
 });

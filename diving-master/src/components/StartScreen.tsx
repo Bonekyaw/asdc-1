@@ -15,9 +15,10 @@ import { Swimmer } from "@/src/components/Swimmer";
 export interface StartScreenProps {
   onStartGame: () => void;
   onSettings?: () => void;
+  onSignOut?: () => void;
 }
 
-export function StartScreen({ onStartGame, onSettings }: StartScreenProps) {
+export function StartScreen({ onStartGame, onSettings, onSignOut }: StartScreenProps) {
   const { width, height } = useWindowDimensions();
   const clock = useGameFrame({ autostart: true, paused: false });
   const scrollController = useScrollController(1, clock.timeMs);
@@ -56,9 +57,20 @@ export function StartScreen({ onStartGame, onSettings }: StartScreenProps) {
       <Animated.View entering={FadeIn.duration(1000)} style={styles.overlay}>
         
         {/* Settings Icon */}
-        <TouchableOpacity style={styles.settingsButton} onPress={onSettings} activeOpacity={0.7}>
+        <TouchableOpacity
+          style={styles.settingsButton}
+          onPress={onSettings}
+          activeOpacity={0.7}
+          disabled={onSettings == null}
+        >
           <Ionicons name="settings-sharp" size={32} color="#94a3b8" />
         </TouchableOpacity>
+
+        {onSignOut ? (
+          <TouchableOpacity style={styles.signOutButton} onPress={onSignOut} activeOpacity={0.7}>
+            <Text style={styles.signOutText}>Sign out</Text>
+          </TouchableOpacity>
+        ) : null}
 
         {/* Title */}
         <Animated.View entering={ZoomIn.springify().damping(12).mass(0.9)} style={styles.titleContainer}>
@@ -111,6 +123,18 @@ const styles = StyleSheet.create({
     padding: 8,
     backgroundColor: "rgba(0, 0, 0, 0.3)",
     borderRadius: 24,
+  },
+  signOutButton: {
+    position: "absolute",
+    bottom: 50,
+    left: 32,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+  },
+  signOutText: {
+    color: "#94a3b8",
+    fontSize: 16,
+    fontWeight: "600",
   },
   titleContainer: {
     alignItems: "center",

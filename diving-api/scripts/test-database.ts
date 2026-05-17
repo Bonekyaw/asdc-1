@@ -1,12 +1,19 @@
 import "dotenv/config";
 import { randomUUID } from "node:crypto";
-import prisma from "../lib/prisma";
+import prisma, { resolveRuntimeDatabaseUrl } from "../lib/prisma";
 
 async function testDatabase() {
   console.log("🔍 Testing Prisma Postgres connection...\n");
 
   try {
-    // Test 1: Check connection
+    const runtimeUrl = resolveRuntimeDatabaseUrl();
+    if (runtimeUrl) {
+      console.log(`Using TCP host: ${new URL(runtimeUrl).hostname}\n`);
+    } else {
+      console.log("Using Prisma Accelerate (prisma+postgres DATABASE_URL)\n");
+    }
+
+    await prisma.$queryRaw`SELECT 1`;
     console.log("✅ Connected to database!");
 
     // Test 2: Create a test user

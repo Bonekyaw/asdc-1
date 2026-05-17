@@ -10,6 +10,12 @@ export default defineConfig({
     seed: "tsx prisma/seed.ts",
   },
   datasource: {
-    url: process.env["DATABASE_URL"],
+    // Migrations / Studio need a TCP URL (not prisma+postgres Accelerate).
+    url:
+      process.env["DIRECT_URL"] ??
+      process.env["POSTGRES_URL"] ??
+      (process.env["DATABASE_URL"]?.startsWith("postgres")
+        ? process.env["DATABASE_URL"]
+        : undefined),
   },
 });
